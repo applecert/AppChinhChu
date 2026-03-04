@@ -20,38 +20,37 @@ jobs:
       - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật C++ Tận Gốc & Dọn Umbrella
+      - name: 🛠️ Phẫu thuật C++ Tận Gốc (Khôi phục Mạch Máu)
         run: |
           echo "BẮT ĐẦU VÁ LỖI C++..."
           
-          # 1. Tiêu diệt zsign.cpp (Tránh thảm họa)
-          rm -f modules/ipa-signer/ios/zsign.cpp
-          
-          # 2. Thiến lệnh system() trong util.cpp
-          sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' modules/ipa-signer/ios/common/util.cpp
-          
-          # 3. Vá lỗi đứt liên lạc (ZSignAsset) cho C++
           cd modules/ipa-signer/ios
           
-          # 3.1 Cứu signing.h (Bơm stdint, string và danh thiếp ZSignAsset)
-          echo '#include <stdint.h>' > temp_file
-          echo '#include <string>' >> temp_file
-          echo 'using namespace std;' >> temp_file
-          echo 'class ZSignAsset;' >> temp_file
-          cat signing.h >> temp_file
-          mv temp_file signing.h
+          # 1. Đảm bảo tên file không đụng hàng với React Native
+          if [ -f "openssl.h" ]; then
+            mv openssl.h zsign_openssl.h
+          fi
+          if [ -f "openssl.cpp" ]; then
+            mv openssl.cpp zsign_openssl.cpp
+          fi
           
-          # 3.2 Bơm danh thiếp ZSignAsset vào các file header khác
-          for file in archo.h macho.h bundle.h; do
-            echo 'class ZSignAsset;' > temp_file
-            cat "$file" >> temp_file
-            mv temp_file "$file"
+          # Đổi tên gọi cũ thành tên mới
+          find . -type f -name "*.*" -exec sed -i '' 's/#include "openssl.h"/#include "zsign_openssl.h"/g' {} +
+          
+          # Bơm lại Mạch máu (zsign_openssl.h) vào đầu các file bị đứt liên lạc
+          for file in archo.h macho.h bundle.h signing.h signing.cpp; do
+            if ! grep -q "zsign_openssl.h" "$file"; then
+              echo '#include "zsign_openssl.h"' > temp_file
+              cat "$file" >> temp_file
+              mv temp_file "$file"
+            fi
           done
           
-          # 3.3 Bơm file signing.h vào signing.cpp để nó hiểu trọn vẹn
-          echo '#include "signing.h"' > temp_file
-          cat signing.cpp >> temp_file
-          mv temp_file signing.cpp
+          # 2. Thiến lệnh system() trong util.cpp gây ngất xỉu trên iOS
+          sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' common/util.cpp
+          
+          # 3. Tiêu diệt zsign.cpp (File CLI chạy trên máy Mac, gây nổ cỗ máy iOS)
+          rm -f zsign.cpp
           
           cd ../../..
           
@@ -59,9 +58,9 @@ jobs:
           cd ios
           pod install
           
-          # 5. Vũ khí hạt nhân quét sạch Umbrella
+          # 5. Dọn rác C++ trong Umbrella Header (Cực kỳ chính xác, không xóa nhầm)
           echo "🔥 BẮT ĐẦU CÀN QUÉT UMBRELLA..."
-          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import ".*\.h"/d' {} +
+          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*)\.h"/d' {} +
 
       - name: Dịch code & Vượt rào Apple (Unsigned Build)
         run: |
