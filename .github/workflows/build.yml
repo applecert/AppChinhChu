@@ -20,26 +20,19 @@ jobs:
       - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật C++ (Gom Mạch Máu & Phát Danh Thiếp)
+      - name: 🛠️ Phẫu thuật C++ (Quy trình VIP)
         run: |
-          echo "BẮT ĐẦU VÁ LỖI C++ CHUYẾN CUỐI..."
+          echo "BẮT ĐẦU VÁ LỖI C++ CHUYẾN CUỐI CÙNG..."
           cd modules/ipa-signer/ios
           
-          # 1. Tự động đổi tên các file Sếp vừa đẩy lên (Tránh đụng hàng React Native)
-          find . -name "openssl.h" -execdir mv {} zsign_openssl.h \;
-          find . -name "openssl.cpp" -execdir mv {} zsign_openssl.cpp \;
+          # 1. Đổi tên tránh đụng hàng React Native (Chỉ khi tồn tại)
+          [ -f "openssl.h" ] && mv openssl.h zsign_openssl.h
+          [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
           
-          # 2. Cập nhật đường dẫn bên trong toàn bộ code
+          # 2. Cập nhật đường dẫn bên trong toàn bộ code C++
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
-          # 3. GOM FILE RA MẶT TIỀN: Đặt ngay cạnh signing.cpp để dễ tìm
-          REAL_H=$(find . -name "zsign_openssl.h" | head -n 1)
-          if [ -n "$REAL_H" ]; then cp "$REAL_H" ./zsign_openssl.h; fi
-          
-          REAL_CPP=$(find . -name "zsign_openssl.cpp" | head -n 1)
-          if [ -n "$REAL_CPP" ]; then cp "$REAL_CPP" ./zsign_openssl.cpp; fi
-          
-          # 4. PHÁT DANH THIẾP (Chữa lỗi unknown type name 'ZSignAsset')
+          # 3. PHÁT DANH THIẾP (Chữa tận gốc lỗi unknown type ZSignAsset ở mốc 22 phút)
           for file in archo.h macho.h bundle.h; do
             if [ -f "$file" ] && ! grep -q "class ZSignAsset;" "$file"; then
               echo 'class ZSignAsset;' > temp_file
@@ -57,7 +50,7 @@ jobs:
             mv temp_file signing.h
           fi
           
-          # 5. Tiêm mạch máu chuẩn cho signing.cpp
+          # 4. Tiêm mạch máu chuẩn xác cho signing.cpp
           if [ -f "signing.cpp" ]; then
             sed -i '' '/^#include "zsign_openssl\.h"$/d' signing.cpp
             echo '#include "zsign_openssl.h"' > temp_file
@@ -65,19 +58,19 @@ jobs:
             mv temp_file signing.cpp
           fi
           
-          # 6. Thiến lệnh system() trong util.cpp gây ngất xỉu
+          # 5. Thiến lệnh system() trong util.cpp gây ngất xỉu trên iOS
           find . -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' {} +
           
-          # 7. Tiêu diệt zsign.cpp (File CLI chạy trên Mac)
+          # 6. Tiêu diệt zsign.cpp (Bom nổ chậm)
           find . -name "zsign.cpp" -delete
           
           cd ../../..
           
-          # 8. Cài CocoaPods
+          # 7. Cài CocoaPods
           cd ios
           pod install
           
-          # 9. Dọn rác C++ trong Umbrella Header
+          # 8. Dọn rác C++ trong Umbrella Header
           echo "🔥 BẮT ĐẦU CÀN QUÉT UMBRELLA..."
           find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*)\.h"/d' {} +
 
