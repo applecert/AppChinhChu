@@ -20,7 +20,7 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Rèn Vũ Khí & Phẫu thuật (CHỐT HẠ NGHIÊM TÚC)
+      - name: 🛠️ Rèn Vũ Khí & Phẫu thuật (TUYỆT ĐỐI AN TOÀN)
         run: |
           echo "1. ĐÚC THƯ VIỆN LIBZIP CHO IOS..."
           curl -L -o libzip.tar.gz https://github.com/nih-at/libzip/releases/download/v1.9.2/libzip-1.9.2.tar.gz
@@ -33,35 +33,25 @@ jobs:
           make install
           cd ../..
           
-          echo "2. TIÊM PODSPEC BẰNG PYTHON (CÚ PHÁP CHUẨN 100%)..."
+          echo "2. CHÈN PODSPEC VÀ HEADER KHÔNG CHẠM VÀO CODE CŨ..."
+          # Đưa file zip.h ra thẳng mặt tiền, không cần khai báo đường dẫn trong Podspec
+          cp modules/ipa-signer/ios/libzip_ios/include/*.h modules/ipa-signer/ios/
+          
           cat << 'EOF' > patch_podspec.py
           import glob
-
           for pod in glob.glob('modules/**/*.podspec', recursive=True):
               with open(pod, 'r') as f:
                   lines = f.readlines()
-
-              # Lọc bỏ các cấu hình lỗi cũ để file sạch sẽ
-              clean_lines = []
-              for line in lines:
-                  if 'pod_target_xcconfig' in line or 'OpenSSL-Universal' in line or 'vendored_libraries' in line or "s.libraries = 'z'" in line:
-                      continue
-                  clean_lines.append(line)
-
-              # 4 dòng cấu hình trực tiếp, không if-else rườm rà
-              injection = [
-                  "  s.dependency 'OpenSSL-Universal'\n",
-                  "  s.libraries = 'z'\n",
-                  "  s.vendored_libraries = 'ios/libzip_ios/lib/libzip.a'\n",
-                  "  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'SWIFT_COMPILATION_MODE' => 'wholemodule', 'HEADER_SEARCH_PATHS' => '\"${PODS_TARGET_SRCROOT}/ios/libzip_ios/include\"' }\n"
-              ]
-
-              # Chèn an toàn vào ngay trước chữ 'end' cuối cùng của file
+              
+              # Chỉ lọc bỏ các rác do lần chạy lỗi trước để lại, KHÔNG ĐỤNG vào pod_target_xcconfig của Sếp
+              clean_lines = [l for l in lines if 'OpenSSL-Universal' not in l and "s.libraries = 'z'" not in l and 'libzip.a' not in l]
+              
+              # Tìm đúng chữ 'end' cuối cùng để chèn an toàn
               for i in range(len(clean_lines)-1, -1, -1):
                   if clean_lines[i].strip() == 'end':
-                      clean_lines = clean_lines[:i] + injection + clean_lines[i:]
+                      clean_lines.insert(i, "  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n  s.vendored_libraries = 'ios/libzip_ios/lib/libzip.a'\n")
                       break
-
+                      
               with open(pod, 'w') as f:
                   f.writelines(clean_lines)
           EOF
