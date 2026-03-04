@@ -20,29 +20,43 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật C++ & Bơm Thư Viện Zip (CHỐT HẠ AN TOÀN)
+      - name: 🛠️ Rèn Vũ Khí & Phẫu thuật C++ (CHỐT HẠ THẬT SỰ)
         run: |
-          echo "BẮT ĐẦU XỬ LÝ C++ VÀ BƠM LIBZIP..."
+          echo "BẮT ĐẦU RÈN LIBZIP VÀ XỬ LÝ C++..."
           
-          # --- SỬA LỖI ĐỘT QUỴ 2 PHÚT (Thay sed bằng perl an toàn 100%) ---
+          # 1. TỰ ĐỘNG ĐÚC LIBZIP TỪ MÃ NGUỒN CHO CHIP iPHONE (ARM64)
+          echo "Đang rèn libzip.a..."
+          curl -L -o libzip.tar.gz https://github.com/nih-at/libzip/releases/download/v1.9.2/libzip-1.9.2.tar.gz
+          tar -xzf libzip.tar.gz
+          cd libzip-1.9.2
+          mkdir build && cd build
+          cmake .. -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_ARCHITECTURES=arm64 -DBUILD_SHARED_LIBS=OFF -DENABLE_BZIP2=OFF -DENABLE_LZMA=OFF -DENABLE_ZSTD=OFF -DENABLE_OPENSSL=OFF -DCMAKE_INSTALL_PREFIX=../../modules/ipa-signer/ios/libzip_ios
+          make -j4
+          make install
+          cd ../..
+          
+          # 2. CHỈNH SỬA PODSPEC ĐỂ TRANG BỊ VŨ KHÍ VỪA RÈN & OPENSSL
           PODSPEC=$(find modules -name "*.podspec" | head -n 1)
           if [ -n "$PODSPEC" ]; then
-            # Xóa sạch các mầm mống lỗi tiêm trước đó
-            perl -pi -e 's/.*s\.dependency "libzip-c".*\n//g' "$PODSPEC"
-            perl -pi -e 's/.*s\.dependency "libzip".*\n//g' "$PODSPEC"
-            # Tiêm libzip chuẩn bằng Perl (Không bao giờ lỗi gõ phím)
-            perl -pi -e 's/(s\.name.*)/$1\n  s.dependency "libzip"/g' "$PODSPEC"
-            echo "Đã tiêm libzip an toàn vào $PODSPEC"
+            # Xóa sạch các vết tích tiêm hỏng trước đó
+            perl -pi -e 's/.*s\.dependency "libzip.*//g' "$PODSPEC"
+            perl -pi -e 's/.*s\.dependency "OpenSSL.*//g' "$PODSPEC"
+            perl -pi -e 's/.*vendored_libraries.*//g' "$PODSPEC"
+            perl -pi -e 's/.*pod_target_xcconfig.*//g' "$PODSPEC"
+            
+            # Trang bị libzip tĩnh và OpenSSL-Universal vào file Podspec
+            perl -pi -e 's/(s\.name.*)/$1\n  s.dependency "OpenSSL-Universal"\n  s.libraries = "z"\n  s.vendored_libraries = "ios\/libzip_ios\/lib\/libzip.a"\n  s.pod_target_xcconfig = { "HEADER_SEARCH_PATHS" => "\"$(PODS_TARGET_SRCROOT)\/ios\/libzip_ios\/include\"" }/g' "$PODSPEC"
+            echo "Đã trang bị xong libzip.a và OpenSSL vào dự án!"
           fi
           
           cd modules/ipa-signer/ios
           
-          # 1. Đổi tên openssl tránh xung đột thư viện React Native
+          # 3. Đổi tên openssl tránh xung đột
           [ -f "openssl.h" ] && mv openssl.h zsign_openssl.h
           [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
-          # 2. Bổ sung thư viện chuẩn STL vào tất cả file header (.h)
+          # 4. Bổ sung thư viện chuẩn STL C++
           for file in archo.h macho.h bundle.h signing.h; do
             if [ -f "$file" ]; then
               sed -i '' '/#include <set>/d' "$file"
@@ -59,7 +73,7 @@ jobs:
             fi
           done
           
-          # 3. Ép cấu trúc Include tĩnh cho các file .cpp để chống lỗi Undeclared Identifier
+          # 5. Ép cấu trúc Include tĩnh chặn đứng lỗi "không hiểu từ vựng"
           for file in archo.cpp bundle.cpp macho.cpp signing.cpp; do
             if [ -f "$file" ]; then
               sed -i '' '/#include "signing\.h"/d' "$file"
@@ -76,19 +90,19 @@ jobs:
             fi
           done
           
-          # 4. Vô hiệu hóa hàm system() không được phép dùng trên iOS
+          # 6. Vô hiệu hóa lệnh system() macOS gây sập trên iOS
           find . -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' {} +
           
-          # 5. Xóa bỏ file CLI chạy trên macOS
+          # 7. Tiêu diệt zsign.cpp
           find . -name "zsign.cpp" -delete
           
           cd ../../..
           
-          # 6. Pod Install (TỰ ĐỘNG CẬP NHẬT KHO ĐỂ KHÔNG BỊ OUT-OF-DATE NỮA)
+          # 8. Pod Install
           cd ios
-          pod install --repo-update
+          pod install
           
-          # 7. Dọn dẹp Umbrella Header
+          # 9. Dọn dẹp Umbrella Header
           find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*)\.h"/d' {} +
 
       - name: Xcode Build (Unsigned)
