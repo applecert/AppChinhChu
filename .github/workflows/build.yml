@@ -1,0 +1,45 @@
+name: Build Unsigned IPA
+on:
+  workflow_dispatch: # Cho phép Sếp bấm nút chạy bằng tay trên web
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Tải mã nguồn về máy ảo
+        uses: actions/checkout@v4
+
+      - name: Lắp ráp Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cài đặt thư viện
+        run: npm install
+
+      - name: Nhào nặn mã nguồn iOS
+        run: npx expo prebuild -p ios --clean
+
+      - name: Cài đặt lõi C++ ZSign (CocoaPods)
+        run: |
+          cd ios
+          pod install
+
+      - name: Dịch code & Vượt rào chứng chỉ Apple
+        run: |
+          cd ios
+          WORKSPACE=$(ls | grep .xcworkspace | head -1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release -sdk iphoneos -arch arm64 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" CONFIGURATION_BUILD_DIR=$PWD/build clean build
+
+      - name: Đóng gói thành file .ipa
+        run: |
+          mkdir -p Payload
+          mv ios/build/*.app Payload/
+          zip -r AppIPAVIET.ipa Payload
+
+      - name: Xuất xưởng gửi về cho Sếp
+        uses: actions/upload-artifact@v4
+        with:
+          name: File-IPA-Goc
+          path: AppIPAVIET.ipa
