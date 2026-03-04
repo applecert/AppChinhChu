@@ -30,7 +30,7 @@ jobs:
           cd ios
           WORKSPACE=$(ls | grep .xcworkspace | head -1)
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
-          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release -sdk iphoneos -arch arm64 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" CONFIGURATION_BUILD_DIR=$PWD/build build
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" EXCLUDED_ARCHS="x86_64" CONFIGURATION_BUILD_DIR=$PWD/build build
 
       - name: Đóng gói thành file .ipa
         run: |
