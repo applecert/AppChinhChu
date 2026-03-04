@@ -30,12 +30,12 @@ jobs:
           cd ios
           WORKSPACE=$(ls | grep .xcworkspace | head -1)
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
-          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release -destination "generic/platform=iOS" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" EXCLUDED_ARCHS="x86_64" CONFIGURATION_BUILD_DIR=$PWD/build build
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release -destination "generic/platform=iOS" -derivedDataPath ./XCodeData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
 
       - name: Đóng gói thành file .ipa
         run: |
           mkdir -p Payload
-          mv ios/build/*.app Payload/
+          mv ios/XCodeData/Build/Products/Release-iphoneos/*.app Payload/
           zip -r AppIPAVIET.ipa Payload
 
       - name: Xuất xưởng gửi file về cho Sếp tải
