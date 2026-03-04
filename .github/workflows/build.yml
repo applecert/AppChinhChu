@@ -20,12 +20,17 @@ jobs:
       - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: Cài đặt lõi C++ (CocoaPods) & Vá lỗi Umbrella
+      - name: Cài đặt lõi C++ & KÍCH HOẠT VŨ KHÍ HẠT NHÂN
         run: |
           cd ios
           pod install
-          echo "Bắt đầu xé bỏ TOÀN BỘ C++ khỏi Umbrella Header..."
-          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/(archo|archive|base64|bundle|common|macho|signing|zsign.*|openssl.*|json|log|fs|sys|utils|crypto|sha.*|md5.*|hash.*|timer.*|mman.*)\.h/d' {} +
+          echo "🔥 BẮT ĐẦU CÀN QUÉT TẬN GỐC C++ TRONG UMBRELLA..."
+          
+          # 1. Chém đích danh cấm vận toàn bộ họ hàng nhà ZSign (Đã vá lỗi util)
+          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|openssl|sha.*|signing|sys|timer|util.*|zsign.*)\.h/d' {} +
+          
+          # 2. VŨ KHÍ HẠT NHÂN: Quét sạch mọi file import có tên viết thường (Không cho 1 con vi khuẩn C++ nào lọt lưới)
+          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "[a-z0-9_]+\.h"/d' {} +
 
       - name: Dịch code & Vượt rào Apple (Unsigned Build)
         run: |
