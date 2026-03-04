@@ -1,36 +1,36 @@
-name: Build Unsigned IPA
+name: Build Unsigned IPA Expo
 on:
-  workflow_dispatch: # Cho phép Sếp bấm nút chạy bằng tay trên web
+  workflow_dispatch:
 
 jobs:
   build-ios:
     runs-on: macos-latest
     steps:
-      - name: Tải mã nguồn về máy ảo
+      - name: Tải mã nguồn của Sếp về máy Mac
         uses: actions/checkout@v4
 
-      - name: Lắp ráp Node.js
+      - name: Lắp ráp động cơ Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: Cài đặt thư viện
+      - name: Cài đặt thư viện mẹ
         run: npm install
 
-      - name: Nhào nặn mã nguồn iOS
+      - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: Cài đặt lõi C++ ZSign (CocoaPods)
+      - name: Cài đặt lõi C++ (CocoaPods)
         run: |
           cd ios
           pod install
 
-      - name: Dịch code & Vượt rào chứng chỉ Apple
+      - name: Dịch code & Vượt rào Apple (Unsigned Build)
         run: |
           cd ios
           WORKSPACE=$(ls | grep .xcworkspace | head -1)
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
-          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release -sdk iphoneos -arch arm64 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" CONFIGURATION_BUILD_DIR=$PWD/build clean build
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release -sdk iphoneos -arch arm64 CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" CONFIGURATION_BUILD_DIR=$PWD/build build
 
       - name: Đóng gói thành file .ipa
         run: |
@@ -38,7 +38,7 @@ jobs:
           mv ios/build/*.app Payload/
           zip -r AppIPAVIET.ipa Payload
 
-      - name: Xuất xưởng gửi về cho Sếp
+      - name: Xuất xưởng gửi file về cho Sếp tải
         uses: actions/upload-artifact@v4
         with:
           name: File-IPA-Goc
