@@ -24,13 +24,19 @@ jobs:
         run: |
           echo "BẮT ĐẦU XỬ LÝ C++ VÀ BƠM LIBZIP..."
           
-          # --- BƯỚC MỚI: BƠM THƯ VIỆN LIBZIP VÀO PODSPEC ĐỂ LẤY ZIP.H ---
+          # --- SỬA LỖI COCOAPODS OUT-OF-DATE ---
           PODSPEC=$(find modules -name "*.podspec" | head -n 1)
-          if [ -n "$PODSPEC" ] && ! grep -q "libzip" "$PODSPEC"; then
-            sed -i '' '/s\.name/a\
-              s.dependency "libzip"\
-            ' "$PODSPEC"
-            echo "Đã tiêm thành công libzip vào $PODSPEC"
+          if [ -n "$PODSPEC" ]; then
+            # Xóa lệnh tiêm cũ bị lỗi
+            sed -i '' '/s\.dependency "libzip"/d' "$PODSPEC"
+            
+            # Tiêm libzip-c (thư viện nén chuẩn nhất cho iOS C++)
+            if ! grep -q "libzip-c" "$PODSPEC"; then
+              sed -i '' '/s\.name/a\
+                s.dependency "libzip-c"\
+              ' "$PODSPEC"
+              echo "Đã tiêm libzip-c vào $PODSPEC"
+            fi
           fi
           
           cd modules/ipa-signer/ios
@@ -82,9 +88,9 @@ jobs:
           
           cd ../../..
           
-          # 6. Pod Install (Sẽ tự động tải libzip cho iOS)
+          # 6. Pod Install (TỰ ĐỘNG CẬP NHẬT KHO ĐỂ KHÔNG BỊ OUT-OF-DATE NỮA)
           cd ios
-          pod install
+          pod install --repo-update
           
           # 7. Dọn dẹp Umbrella Header
           find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*)\.h"/d' {} +
