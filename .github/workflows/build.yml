@@ -20,45 +20,54 @@ jobs:
       - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật C++ Tận Gốc (Khôi phục Mạch Máu)
+      - name: 🛠️ Phẫu thuật C++ Tận Gốc (Hồi Sinh & Nối Mạch Máu)
         run: |
           echo "BẮT ĐẦU VÁ LỖI C++..."
           
           cd modules/ipa-signer/ios
           
-          # 1. Đảm bảo tên file không đụng hàng với React Native
-          if [ -f "openssl.h" ]; then
-            mv openssl.h zsign_openssl.h
-          fi
-          if [ -f "openssl.cpp" ]; then
-            mv openssl.cpp zsign_openssl.cpp
+          # 1. PHÉP THUẬT HỒI SINH: Tải lại 2 file quan trọng nhất mà Sếp lỡ tay xóa mất
+          if [ ! -f "openssl.h" ] && [ ! -f "zsign_openssl.h" ]; then
+            echo "Đang tải lại zsign_openssl.h từ máy chủ gốc..."
+            curl -sSL -o zsign_openssl.h https://raw.githubusercontent.com/zhlynn/zsign/master/openssl.h
           fi
           
-          # Đổi tên gọi cũ thành tên mới
+          if [ ! -f "openssl.cpp" ] && [ ! -f "zsign_openssl.cpp" ]; then
+            echo "Đang tải lại zsign_openssl.cpp từ máy chủ gốc..."
+            curl -sSL -o zsign_openssl.cpp https://raw.githubusercontent.com/zhlynn/zsign/master/openssl.cpp
+          fi
+          
+          # 2. Đổi tên nếu file cũ vẫn lẩn trốn (tránh đụng hàng React Native)
+          [ -f "openssl.h" ] && mv openssl.h zsign_openssl.h
+          [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
+          
+          # 3. Đồng bộ hóa toàn bộ tên gọi mới trong dự án
           find . -type f -name "*.*" -exec sed -i '' 's/#include "openssl.h"/#include "zsign_openssl.h"/g' {} +
           
-          # Bơm lại Mạch máu (zsign_openssl.h) vào đầu các file bị đứt liên lạc
+          # 4. Nối lại Mạch máu vào đầu các file bị đứt liên lạc
           for file in archo.h macho.h bundle.h signing.h signing.cpp; do
-            if ! grep -q "zsign_openssl.h" "$file"; then
+            if [ -f "$file" ] && ! grep -q "zsign_openssl.h" "$file"; then
               echo '#include "zsign_openssl.h"' > temp_file
               cat "$file" >> temp_file
               mv temp_file "$file"
             fi
           done
           
-          # 2. Thiến lệnh system() trong util.cpp gây ngất xỉu trên iOS
-          sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' common/util.cpp
+          # 5. Thiến lệnh system() trong util.cpp gây ngất xỉu trên iOS
+          if [ -f "common/util.cpp" ]; then
+            sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' common/util.cpp
+          fi
           
-          # 3. Tiêu diệt zsign.cpp (File CLI chạy trên máy Mac, gây nổ cỗ máy iOS)
+          # 6. Tiêu diệt zsign.cpp (File rác chạy trên máy Mac, gây nổ cỗ máy iOS)
           rm -f zsign.cpp
           
           cd ../../..
           
-          # 4. Cài CocoaPods
+          # 7. Cài CocoaPods (Đóng gói lại với file vừa hồi sinh)
           cd ios
           pod install
           
-          # 5. Dọn rác C++ trong Umbrella Header (Cực kỳ chính xác, không xóa nhầm)
+          # 8. Dọn rác C++ trong Umbrella Header
           echo "🔥 BẮT ĐẦU CÀN QUÉT UMBRELLA..."
           find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*)\.h"/d' {} +
 
