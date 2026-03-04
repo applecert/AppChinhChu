@@ -20,34 +20,26 @@ jobs:
       - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật C++ (Định vị Mạch Máu & Phát Danh Thiếp)
+      - name: 🛠️ Phẫu thuật C++ (Gom Mạch Máu & Phát Danh Thiếp)
         run: |
           echo "BẮT ĐẦU VÁ LỖI C++ CHUYẾN CUỐI..."
           cd modules/ipa-signer/ios
           
-          # 1. Đổi tên tránh đụng hàng (An toàn trên mọi thư mục)
-          for file in $(find . -name "openssl.h"); do mv "$file" "${file%/*}/zsign_openssl.h"; done
-          for file in $(find . -name "openssl.cpp"); do mv "$file" "${file%/*}/zsign_openssl.cpp"; done
+          # 1. Tự động đổi tên các file Sếp vừa đẩy lên (Tránh đụng hàng React Native)
+          find . -name "openssl.h" -execdir mv {} zsign_openssl.h \;
+          find . -name "openssl.cpp" -execdir mv {} zsign_openssl.cpp \;
           
-          # 2. Cập nhật đường dẫn bên trong các file
+          # 2. Cập nhật đường dẫn bên trong toàn bộ code
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
-          # 3. BẾ FILE RA TẬN NƠI: Đảm bảo zsign_openssl.h nằm ngay cạnh signing.cpp
+          # 3. GOM FILE RA MẶT TIỀN: Đặt ngay cạnh signing.cpp để dễ tìm
           REAL_H=$(find . -name "zsign_openssl.h" | head -n 1)
-          if [ -n "$REAL_H" ]; then
-            cp "$REAL_H" ./zsign_openssl.h
-          else
-            # Phương án dự phòng: Tự động tải lại nếu máy Sếp mất file
-            echo "Đang tải lại thư viện gốc..."
-            curl -sSL -o zsign_openssl.h https://raw.githubusercontent.com/zhlynn/zsign/main/openssl.h
-            curl -sSL -o zsign_openssl.cpp https://raw.githubusercontent.com/zhlynn/zsign/main/openssl.cpp
-            if grep -q "404" zsign_openssl.h; then
-              curl -sSL -o zsign_openssl.h https://raw.githubusercontent.com/zhlynn/zsign/master/openssl.h
-              curl -sSL -o zsign_openssl.cpp https://raw.githubusercontent.com/zhlynn/zsign/master/openssl.cpp
-            fi
-          fi
+          if [ -n "$REAL_H" ]; then cp "$REAL_H" ./zsign_openssl.h; fi
           
-          # 4. PHÁT DANH THIẾP (Chữa lỗi unknown type name 'ZSignAsset' ở phút 22)
+          REAL_CPP=$(find . -name "zsign_openssl.cpp" | head -n 1)
+          if [ -n "$REAL_CPP" ]; then cp "$REAL_CPP" ./zsign_openssl.cpp; fi
+          
+          # 4. PHÁT DANH THIẾP (Chữa lỗi unknown type name 'ZSignAsset')
           for file in archo.h macho.h bundle.h; do
             if [ -f "$file" ] && ! grep -q "class ZSignAsset;" "$file"; then
               echo 'class ZSignAsset;' > temp_file
@@ -65,7 +57,7 @@ jobs:
             mv temp_file signing.h
           fi
           
-          # 5. Tiêm mạch máu cho signing.cpp
+          # 5. Tiêm mạch máu chuẩn cho signing.cpp
           if [ -f "signing.cpp" ]; then
             sed -i '' '/^#include "zsign_openssl\.h"$/d' signing.cpp
             echo '#include "zsign_openssl.h"' > temp_file
