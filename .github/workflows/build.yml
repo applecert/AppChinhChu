@@ -20,19 +20,17 @@ jobs:
       - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: 🗑️ Dọn rác & Cài đặt lõi C++ (CÚ CHỐT)
+      - name: 🗑️ Dọn rác & Kích hoạt Vũ khí Hạt nhân (TỐI THƯỢNG)
         run: |
-          # 1. Tiêu diệt zsign.cpp (Thủ phạm chính khiến Apple ngất xỉu)
+          # 1. Tiêu diệt zsign.cpp (Thủ phạm gây ngất xỉu ở phút 12)
           rm -f modules/ipa-signer/ios/zsign.cpp
           
           cd ios
           pod install
           
           echo "🔥 BẮT ĐẦU CÀN QUÉT UMBRELLA..."
-          # 2. Xóa thủ công từng thằng C++ khỏi Umbrella (Không dùng Regex, không trượt 1 file)
-          for header in archo archive base64 bundle common crypto fs json log macho mman md5 openssl sha1 sha256 signing sys timer util zsign zsign_openssl; do
-            find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' "/$header\.h/d" {} +
-          done
+          # 2. VŨ KHÍ HẠT NHÂN: Quét sạch KHÔNG CHỪA MỘT FILE NÀO trong Umbrella (Khắc phục triệt để lỗi sha.h, common.h...)
+          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import ".*\.h"/d' {} +
 
       - name: Dịch code & Vượt rào Apple (Unsigned Build)
         run: |
