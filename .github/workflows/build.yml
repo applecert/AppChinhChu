@@ -20,23 +20,19 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật C++ & Bơm Thư Viện Zip (CHỐT HẠ)
+      - name: 🛠️ Phẫu thuật C++ & Bơm Thư Viện Zip (CHỐT HẠ AN TOÀN)
         run: |
           echo "BẮT ĐẦU XỬ LÝ C++ VÀ BƠM LIBZIP..."
           
-          # --- SỬA LỖI COCOAPODS OUT-OF-DATE ---
+          # --- SỬA LỖI ĐỘT QUỴ 2 PHÚT (Thay sed bằng perl an toàn 100%) ---
           PODSPEC=$(find modules -name "*.podspec" | head -n 1)
           if [ -n "$PODSPEC" ]; then
-            # Xóa lệnh tiêm cũ bị lỗi
-            sed -i '' '/s\.dependency "libzip"/d' "$PODSPEC"
-            
-            # Tiêm libzip-c (thư viện nén chuẩn nhất cho iOS C++)
-            if ! grep -q "libzip-c" "$PODSPEC"; then
-              sed -i '' '/s\.name/a\
-                s.dependency "libzip-c"\
-              ' "$PODSPEC"
-              echo "Đã tiêm libzip-c vào $PODSPEC"
-            fi
+            # Xóa sạch các mầm mống lỗi tiêm trước đó
+            perl -pi -e 's/.*s\.dependency "libzip-c".*\n//g' "$PODSPEC"
+            perl -pi -e 's/.*s\.dependency "libzip".*\n//g' "$PODSPEC"
+            # Tiêm libzip chuẩn bằng Perl (Không bao giờ lỗi gõ phím)
+            perl -pi -e 's/(s\.name.*)/$1\n  s.dependency "libzip"/g' "$PODSPEC"
+            echo "Đã tiêm libzip an toàn vào $PODSPEC"
           fi
           
           cd modules/ipa-signer/ios
