@@ -20,12 +20,9 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Rèn Vũ Khí & Phẫu thuật C++ (CHỐT HẠ THẬT SỰ)
+      - name: 🛠️ Rèn Vũ Khí & Phẫu thuật (Quy trình Python)
         run: |
-          echo "BẮT ĐẦU RÈN LIBZIP VÀ XỬ LÝ C++..."
-          
-          # 1. TỰ ĐỘNG ĐÚC LIBZIP TỪ MÃ NGUỒN CHO CHIP iPHONE (ARM64)
-          echo "Đang rèn libzip.a..."
+          echo "1. ĐÚC THƯ VIỆN LIBZIP CHO IOS..."
           curl -L -o libzip.tar.gz https://github.com/nih-at/libzip/releases/download/v1.9.2/libzip-1.9.2.tar.gz
           tar -xzf libzip.tar.gz
           cd libzip-1.9.2
@@ -36,30 +33,45 @@ jobs:
           make install
           cd ../..
           
-          # 2. CHỈNH SỬA PODSPEC (DÙNG AWK TUYỆT ĐỐI AN TOÀN - CHỐNG LỖI DÃY SỐ)
-          PODSPEC=$(find modules -name "*.podspec" | head -n 1)
-          if [ -n "$PODSPEC" ]; then
-            # Xóa các dòng tiêm lỗi cũ
-            sed -i '' '/s\.dependency "libzip/d' "$PODSPEC"
-            sed -i '' '/s\.dependency "OpenSSL/d' "$PODSPEC"
-            sed -i '' '/s\.vendored_libraries/d' "$PODSPEC"
-            sed -i '' '/s\.pod_target_xcconfig/d' "$PODSPEC"
-            sed -i '' '/s\.libraries = "z"/d' "$PODSPEC"
-            
-            # Tiêm chuẩn chỉ bằng AWK
-            awk '/s\.name/ { print; print "  s.dependency \"OpenSSL-Universal\"\n  s.libraries = \"z\"\n  s.vendored_libraries = \"ios/libzip_ios/lib/libzip.a\"\n  s.pod_target_xcconfig = { \"HEADER_SEARCH_PATHS\" => \"\\\"$(PODS_TARGET_SRCROOT)/ios/libzip_ios/include\\\"\" }"; next }1' "$PODSPEC" > temp.podspec
-            mv temp.podspec "$PODSPEC"
-            echo "Đã trang bị xong libzip.a và OpenSSL vào dự án!"
-          fi
+          echo "2. TIÊM PODSPEC BẰNG PYTHON (AN TOÀN 100%)..."
+          cat << 'EOF' > patch_podspec.py
+          import glob
+          import re
+          for pod in glob.glob('modules/**/*.podspec', recursive=True):
+              with open(pod, 'r') as f:
+                  c = f.read()
+              
+              # Dọn dẹp sạch sẽ các dòng rác nếu có từ lần chạy trước
+              c = re.sub(r'^\s*s\.dependency.*OpenSSL.*$', '', c, flags=re.MULTILINE)
+              c = re.sub(r'^\s*s\.library.*z.*$', '', c, flags=re.MULTILINE)
+              c = re.sub(r'^\s*s\.vendored_libraries.*libzip\.a.*$', '', c, flags=re.MULTILINE)
+              
+              # Tiêm chuẩn xác bằng Ruby Script
+              injection = """
+            s.dependency 'OpenSSL-Universal'
+            s.library = 'z'
+            s.vendored_libraries = 'ios/libzip_ios/lib/libzip.a'
+            if s.pod_target_xcconfig.nil?
+              s.pod_target_xcconfig = { 'HEADER_SEARCH_PATHS' => '"${PODS_TARGET_SRCROOT}/ios/libzip_ios/include"' }
+            else
+              s.pod_target_xcconfig['HEADER_SEARCH_PATHS'] = '"${PODS_TARGET_SRCROOT}/ios/libzip_ios/include"'
+            end
+          """
+              # Chèn ngay dưới khai báo s.name
+              c = re.sub(r'(s\.name\s*=.*)', r'\1' + injection, c, count=1)
+              
+              with open(pod, 'w') as f:
+                  f.write(c)
+          EOF
+          python3 patch_podspec.py
           
+          echo "3. XỬ LÝ ĐƯỜNG DẪN VÀ THỨ TỰ C++..."
           cd modules/ipa-signer/ios
           
-          # 3. Đổi tên openssl tránh xung đột
           [ -f "openssl.h" ] && mv openssl.h zsign_openssl.h
           [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
-          # 4. Bổ sung thư viện chuẩn STL C++
           for file in archo.h macho.h bundle.h signing.h; do
             if [ -f "$file" ]; then
               sed -i '' '/#include <set>/d' "$file"
@@ -76,7 +88,6 @@ jobs:
             fi
           done
           
-          # 5. Ép cấu trúc Include tĩnh chặn đứng lỗi "không hiểu từ vựng"
           for file in archo.cpp bundle.cpp macho.cpp signing.cpp; do
             if [ -f "$file" ]; then
               sed -i '' '/#include "signing\.h"/d' "$file"
@@ -93,19 +104,16 @@ jobs:
             fi
           done
           
-          # 6. Vô hiệu hóa lệnh system() macOS gây sập trên iOS
           find . -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' {} +
-          
-          # 7. Tiêu diệt zsign.cpp
           find . -name "zsign.cpp" -delete
           
           cd ../../..
           
-          # 8. Pod Install
+          echo "4. CÀI ĐẶT COCOAPODS..."
           cd ios
           pod install
           
-          # 9. Dọn dẹp Umbrella Header
+          echo "5. DỌN DẸP UMBRELLA HEADER..."
           find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*)\.h"/d' {} +
 
       - name: Xcode Build (Unsigned)
