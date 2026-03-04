@@ -20,19 +20,24 @@ jobs:
       - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật C++ (Quy trình VIP + Cấp Chìa Khóa)
+      - name: 🛠️ Phẫu thuật C++ (Rút sai lầm cũ, Vá lỗi Hộ Khẩu)
         run: |
           echo "BẮT ĐẦU VÁ LỖI C++ CHUYẾN CUỐI CÙNG..."
           cd modules/ipa-signer/ios
           
-          # 1. Đổi tên tránh đụng hàng React Native
+          # 1. Đổi tên chuẩn & Cập nhật đường dẫn
           [ -f "openssl.h" ] && mv openssl.h zsign_openssl.h
           [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
-          
-          # 2. Cập nhật đường dẫn bên trong toàn bộ code C++
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
-          # 3. PHÁT DANH THIẾP (Để các file header không cãi nhau)
+          # 2. XÓA BỎ SAI LẦM CỦA KỊCH BẢN TRƯỚC (Rút chìa khóa dỏm)
+          for file in archo.cpp macho.cpp bundle.cpp signing.cpp; do
+            if [ -f "$file" ]; then
+              sed -i '' '/^#include "signing\.h"$/d' "$file"
+            fi
+          done
+          
+          # 3. PHÁT DANH THIẾP ĐỂ CHỐNG LỖI "UNKNOWN TYPE"
           for file in archo.h macho.h bundle.h; do
             if [ -f "$file" ] && ! grep -q "class ZSignAsset;" "$file"; then
               echo 'class ZSignAsset;' > temp_file
@@ -41,33 +46,26 @@ jobs:
             fi
           done
           
-          if [ -f "signing.h" ] && ! grep -q "class ZSignAsset;" "signing.h"; then
-            echo '#include <stdint.h>' > temp_file
-            echo '#include <string>' >> temp_file
-            echo 'using namespace std;' >> temp_file
+          # 4. BƠM TỪ VỰNG CHO signing.h (Chữa bệnh jvalue & CS_BlobIndex)
+          if [ -f "signing.h" ] && ! grep -q "macho.h" "signing.h"; then
+            echo '#include "common/json.h"' > temp_file
+            echo '#include "macho.h"' >> temp_file
             echo 'class ZSignAsset;' >> temp_file
             cat signing.h >> temp_file
             mv temp_file signing.h
           fi
           
-          # 4. CẤP CHÌA KHÓA KÉT SẮT (Chữa lỗi incomplete type ZSignAsset ở file .cpp)
-          for file in archo.cpp macho.cpp bundle.cpp; do
-            if [ -f "$file" ] && ! grep -q '#include "signing.h"' "$file"; then
-              echo '#include "signing.h"' > temp_file
+          # 5. CUNG CẤP SỔ HỘ KHẨU CHO CÁC FILE CPP (Chữa dứt điểm incomplete type)
+          for file in archo.cpp macho.cpp bundle.cpp signing.cpp; do
+            if [ -f "$file" ] && ! grep -q '^#include "zsign_openssl.h"' "$file"; then
+              echo '#include "common/json.h"' > temp_file
+              echo '#include "zsign_openssl.h"' >> temp_file
               cat "$file" >> temp_file
               mv temp_file "$file"
             fi
           done
           
-          # 5. Tiêm mạch máu chuẩn xác cho signing.cpp
-          if [ -f "signing.cpp" ]; then
-            sed -i '' '/^#include "zsign_openssl\.h"$/d' signing.cpp
-            echo '#include "zsign_openssl.h"' > temp_file
-            cat signing.cpp >> temp_file
-            mv temp_file signing.cpp
-          fi
-          
-          # 6. Thiến lệnh system() trong util.cpp gây ngất xỉu trên iOS
+          # 6. Thiến lệnh system() trong util.cpp
           find . -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' {} +
           
           # 7. Tiêu diệt zsign.cpp (Bom nổ chậm)
