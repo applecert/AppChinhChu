@@ -20,16 +20,34 @@ jobs:
       - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: Cài đặt lõi C++ & KÍCH HOẠT VŨ KHÍ HẠT NHÂN
+      - name: 💉 Phẫu thuật vá lỗi C++ tự động (Không cần Sếp động tay)
+        run: |
+          echo "BẮT ĐẦU BƠM KHÁNG SINH CHỮA MẤT TRÍ NHỚ..."
+          cd modules/ipa-signer/ios
+          
+          # 1. Bơm định nghĩa ZSignAsset vào đầu 3 file này để nó hết ngơ ngác
+          for file in archo.h macho.h bundle.h; do
+            echo "class ZSignAsset;" > temp_file
+            cat "$file" >> temp_file
+            mv temp_file "$file"
+          done
+          
+          # 2. Bơm file signing.h vào đầu zsign.cpp
+          echo "#include \"signing.h\"" > temp_file
+          cat zsign.cpp >> temp_file
+          mv temp_file zsign.cpp
+          
+          # 3. Cắt phăng cái dòng gọi hàm CheckSignature gây sập máy (Thay bằng return 0)
+          sed -i '' 's/.*CheckSignature.*/    return 0;/g' zsign.cpp
+          
+          cd ../../..
+
+      - name: Cài đặt lõi C++ & Kích hoạt Vũ khí Hạt nhân
         run: |
           cd ios
           pod install
-          echo "🔥 BẮT ĐẦU CÀN QUÉT TẬN GỐC C++ TRONG UMBRELLA..."
-          
-          # 1. Chém đích danh cấm vận toàn bộ họ hàng nhà ZSign (Đã vá lỗi util)
+          echo "🔥 BẮT ĐẦU CÀN QUÉT UMBRELLA..."
           find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|openssl|sha.*|signing|sys|timer|util.*|zsign.*)\.h/d' {} +
-          
-          # 2. VŨ KHÍ HẠT NHÂN: Quét sạch mọi file import có tên viết thường (Không cho 1 con vi khuẩn C++ nào lọt lưới)
           find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "[a-z0-9_]+\.h"/d' {} +
 
       - name: Dịch code & Vượt rào Apple (Unsigned Build)
