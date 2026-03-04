@@ -20,42 +20,19 @@ jobs:
       - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: 💉 Phẫu thuật vá lỗi C++ tự động (Bản nâng cấp)
+      - name: 🗑️ Dọn rác & Cài đặt lõi C++ (CÚ CHỐT)
         run: |
-          echo "BẮT ĐẦU PHẪU THUẬT..."
-          cd modules/ipa-signer/ios
+          # 1. Tiêu diệt zsign.cpp (Thủ phạm chính khiến Apple ngất xỉu)
+          rm -f modules/ipa-signer/ios/zsign.cpp
           
-          # 1. Dạy signing.h biết bảng chữ cái (string, uint8_t)
-          echo "#include <stdint.h>" > temp_file
-          echo "#include <string>" >> temp_file
-          echo "using namespace std;" >> temp_file
-          cat signing.h >> temp_file
-          mv temp_file signing.h
-
-          # 2. Bơm định nghĩa ZSignAsset chữa mất trí nhớ
-          for file in archo.h macho.h bundle.h; do
-            echo "class ZSignAsset;" > temp_file
-            cat "$file" >> temp_file
-            mv temp_file "$file"
-          done
-          
-          # 3. Ghép nối signing.h vào zsign.cpp
-          echo "#include \"signing.h\"" > temp_file
-          cat zsign.cpp >> temp_file
-          mv temp_file zsign.cpp
-          
-          # 4. Cắt phăng khối u CheckSignature
-          sed -i '' 's/.*CheckSignature.*/    return 0;/g' zsign.cpp
-          
-          cd ../../..
-
-      - name: Cài đặt lõi C++ & Kích hoạt Vũ khí Hạt nhân
-        run: |
           cd ios
           pod install
+          
           echo "🔥 BẮT ĐẦU CÀN QUÉT UMBRELLA..."
-          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|openssl|sha.*|signing|sys|timer|util.*|zsign.*)\.h/d' {} +
-          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "[a-z0-9_]+\.h"/d' {} +
+          # 2. Xóa thủ công từng thằng C++ khỏi Umbrella (Không dùng Regex, không trượt 1 file)
+          for header in archo archive base64 bundle common crypto fs json log macho mman md5 openssl sha1 sha256 signing sys timer util zsign zsign_openssl; do
+            find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' "/$header\.h/d" {} +
+          done
 
       - name: Dịch code & Vượt rào Apple (Unsigned Build)
         run: |
