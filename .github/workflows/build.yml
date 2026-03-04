@@ -20,36 +20,33 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Rèn Vũ Khí & Phẫu thuật (TUYỆT ĐỐI AN TOÀN)
+      - name: 🛠️ Phẫu thuật & Bơm Minizip (CHỐT HẠ ĐỈNH CAO)
         run: |
-          echo "1. ĐÚC THƯ VIỆN LIBZIP CHO IOS..."
-          curl -L -o libzip.tar.gz https://github.com/nih-at/libzip/releases/download/v1.9.2/libzip-1.9.2.tar.gz
-          tar -xzf libzip.tar.gz
-          cd libzip-1.9.2
-          sed -i '' 's/cmake_minimum_required.*/cmake_minimum_required(VERSION 3.5)/g' CMakeLists.txt
-          mkdir build && cd build
-          cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_ARCHITECTURES=arm64 -DBUILD_SHARED_LIBS=OFF -DENABLE_BZIP2=OFF -DENABLE_LZMA=OFF -DENABLE_ZSTD=OFF -DENABLE_OPENSSL=OFF -DCMAKE_INSTALL_PREFIX=../../modules/ipa-signer/ios/libzip_ios
-          make -j4
-          make install
-          cd ../..
+          echo "1. BƠM TRỰC TIẾP THƯ VIỆN MINIZIP VÀO LÕI..."
+          mkdir -p modules/ipa-signer/ios/minizip
+          cd modules/ipa-signer/ios/minizip
+          BASE_URL="https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip"
+          curl -sLO $BASE_URL/unzip.h
+          curl -sLO $BASE_URL/unzip.c
+          curl -sLO $BASE_URL/zip.h
+          curl -sLO $BASE_URL/zip.c
+          curl -sLO $BASE_URL/ioapi.h
+          curl -sLO $BASE_URL/ioapi.c
+          curl -sLO $BASE_URL/crypt.h
+          cd ../../../..
           
-          echo "2. CHÈN PODSPEC VÀ HEADER KHÔNG CHẠM VÀO CODE CŨ..."
-          # Đưa file zip.h ra thẳng mặt tiền, không cần khai báo đường dẫn trong Podspec
-          cp modules/ipa-signer/ios/libzip_ios/include/*.h modules/ipa-signer/ios/
-          
+          echo "2. TIÊM PODSPEC BẰNG PYTHON (CHỈ LẤY OPENSSL VÀ ZLIB)..."
           cat << 'EOF' > patch_podspec.py
           import glob
           for pod in glob.glob('modules/**/*.podspec', recursive=True):
               with open(pod, 'r') as f:
                   lines = f.readlines()
               
-              # Chỉ lọc bỏ các rác do lần chạy lỗi trước để lại, KHÔNG ĐỤNG vào pod_target_xcconfig của Sếp
-              clean_lines = [l for l in lines if 'OpenSSL-Universal' not in l and "s.libraries = 'z'" not in l and 'libzip.a' not in l]
+              clean_lines = [l for l in lines if 'OpenSSL-Universal' not in l and "s.libraries = 'z'" not in l and 'libzip' not in l and 'pod_target_xcconfig' not in l]
               
-              # Tìm đúng chữ 'end' cuối cùng để chèn an toàn
               for i in range(len(clean_lines)-1, -1, -1):
                   if clean_lines[i].strip() == 'end':
-                      clean_lines.insert(i, "  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n  s.vendored_libraries = 'ios/libzip_ios/lib/libzip.a'\n")
+                      clean_lines.insert(i, "  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n")
                       break
                       
               with open(pod, 'w') as f:
@@ -57,13 +54,18 @@ jobs:
           EOF
           python3 patch_podspec.py
           
-          echo "3. XỬ LÝ ĐƯỜNG DẪN VÀ THỨ TỰ C++..."
+          echo "3. XỬ LÝ ĐƯỜNG DẪN C++ VÀ MINIZIP..."
           cd modules/ipa-signer/ios
           
           [ -f "openssl.h" ] && mv openssl.h zsign_openssl.h
           [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
+          # Đổi lệnh gọi zip cũ thành gọi trực tiếp vào thư mục minizip vừa tải
+          find . -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<zip\.h>/"minizip\/zip.h"/g' {} +
+          find . -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<unzip\.h>/"minizip\/unzip.h"/g' {} +
+          
+          # Bơm thư viện chuẩn C++ (Chữa lỗi unknown type)
           for file in archo.h macho.h bundle.h signing.h; do
             if [ -f "$file" ]; then
               sed -i '' '/#include <set>/d' "$file"
@@ -80,6 +82,7 @@ jobs:
             fi
           done
           
+          # Sắp xếp Include chuẩn xác
           for file in archo.cpp bundle.cpp macho.cpp signing.cpp; do
             if [ -f "$file" ]; then
               sed -i '' '/#include "signing\.h"/d' "$file"
@@ -106,7 +109,7 @@ jobs:
           pod install
           
           echo "5. DỌN DẸP UMBRELLA HEADER..."
-          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*)\.h"/d' {} +
+          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*|zip|unzip|ioapi|crypt)\.h"/d' {} +
 
       - name: Xcode Build (Unsigned)
         run: |
