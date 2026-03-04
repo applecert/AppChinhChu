@@ -20,7 +20,7 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật & Bơm Minizip (CHỐT HẠ ĐỈNH CAO)
+      - name: 🛠️ Phẫu thuật & Bơm Minizip (SẠCH SẼ 100%)
         run: |
           echo "1. BƠM TRỰC TIẾP THƯ VIỆN MINIZIP VÀO LÕI..."
           mkdir -p modules/ipa-signer/ios/minizip
@@ -35,22 +35,21 @@ jobs:
           curl -sLO $BASE_URL/crypt.h
           cd ../../../..
           
-          echo "2. TIÊM PODSPEC BẰNG PYTHON (CHỈ LẤY OPENSSL VÀ ZLIB)..."
+          echo "2. TIÊM PODSPEC SIÊU TỐI GIẢN (KHÔNG PHÁ CODE CŨ)..."
           cat << 'EOF' > patch_podspec.py
           import glob
           for pod in glob.glob('modules/**/*.podspec', recursive=True):
               with open(pod, 'r') as f:
-                  lines = f.readlines()
+                  content = f.read()
               
-              clean_lines = [l for l in lines if 'OpenSSL-Universal' not in l and "s.libraries = 'z'" not in l and 'libzip' not in l and 'pod_target_xcconfig' not in l]
-              
-              for i in range(len(clean_lines)-1, -1, -1):
-                  if clean_lines[i].strip() == 'end':
-                      clean_lines.insert(i, "  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n")
-                      break
-                      
+              # Chỉ tìm chữ 'end' cuối cùng của file và chèn vào ngay trước nó
+              idx = content.rfind('end')
+              if idx != -1:
+                  injection = "\n  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n"
+                  content = content[:idx] + injection + content[idx:]
+                  
               with open(pod, 'w') as f:
-                  f.writelines(clean_lines)
+                  f.write(content)
           EOF
           python3 patch_podspec.py
           
