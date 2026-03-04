@@ -20,16 +20,19 @@ jobs:
       - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: 🗑️ Dọn rác & Kích hoạt Vũ khí Hạt nhân (TỐI THƯỢNG)
+      - name: 🗑️ Phẫu thuật C++ & Quét sạch Umbrella
         run: |
-          # 1. Tiêu diệt zsign.cpp (Thủ phạm gây ngất xỉu ở phút 12)
+          # 1. Tiêu diệt zsign.cpp (Tránh thảm họa)
           rm -f modules/ipa-signer/ios/zsign.cpp
+          
+          # 2. VÔ HIỆU HÓA lệnh system() bị cấm trên iOS trong file util.cpp
+          sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' modules/ipa-signer/ios/common/util.cpp
           
           cd ios
           pod install
           
           echo "🔥 BẮT ĐẦU CÀN QUÉT UMBRELLA..."
-          # 2. VŨ KHÍ HẠT NHÂN: Quét sạch KHÔNG CHỪA MỘT FILE NÀO trong Umbrella (Khắc phục triệt để lỗi sha.h, common.h...)
+          # 3. Quét sạch mọi C++ lọt lưới
           find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import ".*\.h"/d' {} +
 
       - name: Dịch code & Vượt rào Apple (Unsigned Build)
