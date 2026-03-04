@@ -6,95 +6,79 @@ jobs:
   build-ios:
     runs-on: macos-latest
     steps:
-      - name: Tải mã nguồn của Sếp về máy Mac
+      - name: Tải mã nguồn về
         uses: actions/checkout@v4
 
-      - name: Lắp ráp động cơ Node.js
+      - name: Cài đặt Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: Cài đặt thư viện mẹ
+      - name: Cài đặt thư viện Node
         run: npm install
 
-      - name: Nhào nặn khung xương iOS (Expo Prebuild)
+      - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật C++ (Rút sai lầm cũ, Vá lỗi Hộ Khẩu)
+      - name: 🛠️ Phẫu thuật C++ (Sắp xếp Include chuẩn xác)
         run: |
-          echo "BẮT ĐẦU VÁ LỖI C++ CHUYẾN CUỐI CÙNG..."
+          echo "BẮT ĐẦU XỬ LÝ C++..."
           cd modules/ipa-signer/ios
           
-          # 1. Đổi tên chuẩn & Cập nhật đường dẫn
+          # 1. Đổi tên file openssl tránh xung đột với React Native
           [ -f "openssl.h" ] && mv openssl.h zsign_openssl.h
           [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
-          # 2. XÓA BỎ SAI LẦM CỦA KỊCH BẢN TRƯỚC (Rút chìa khóa dỏm)
-          for file in archo.cpp macho.cpp bundle.cpp signing.cpp; do
+          # 2. Định dạng lại cấu trúc Include cho các file CPP cốt lõi
+          for file in archo.cpp bundle.cpp macho.cpp signing.cpp; do
             if [ -f "$file" ]; then
-              sed -i '' '/^#include "signing\.h"$/d' "$file"
-            fi
-          done
-          
-          # 3. PHÁT DANH THIẾP ĐỂ CHỐNG LỖI "UNKNOWN TYPE"
-          for file in archo.h macho.h bundle.h; do
-            if [ -f "$file" ] && ! grep -q "class ZSignAsset;" "$file"; then
-              echo 'class ZSignAsset;' > temp_file
-              cat "$file" >> temp_file
-              mv temp_file "$file"
-            fi
-          done
-          
-          # 4. BƠM TỪ VỰNG CHO signing.h (Chữa bệnh jvalue & CS_BlobIndex)
-          if [ -f "signing.h" ] && ! grep -q "macho.h" "signing.h"; then
-            echo '#include "common/json.h"' > temp_file
-            echo '#include "macho.h"' >> temp_file
-            echo 'class ZSignAsset;' >> temp_file
-            cat signing.h >> temp_file
-            mv temp_file signing.h
-          fi
-          
-          # 5. CUNG CẤP SỔ HỘ KHẨU CHO CÁC FILE CPP (Chữa dứt điểm incomplete type)
-          for file in archo.cpp macho.cpp bundle.cpp signing.cpp; do
-            if [ -f "$file" ] && ! grep -q '^#include "zsign_openssl.h"' "$file"; then
+              # Xóa bỏ các khai báo cũ để tránh trùng lặp và sai thứ tự
+              sed -i '' '/#include "signing\.h"/d' "$file"
+              sed -i '' '/#include "zsign_openssl\.h"/d' "$file"
+              sed -i '' '/#include "common\/json\.h"/d' "$file"
+              sed -i '' '/#include "macho\.h"/d' "$file"
+              
+              # Ép thứ tự đọc file chuẩn xác 100% (Từ vựng cơ bản -> Định nghĩa cao cấp)
               echo '#include "common/json.h"' > temp_file
               echo '#include "zsign_openssl.h"' >> temp_file
+              echo '#include "macho.h"' >> temp_file
+              echo '#include "signing.h"' >> temp_file
               cat "$file" >> temp_file
               mv temp_file "$file"
             fi
           done
           
-          # 6. Thiến lệnh system() trong util.cpp
+          # 3. Xử lý hàm system() không tương thích trên iOS
           find . -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' {} +
           
-          # 7. Tiêu diệt zsign.cpp (Bom nổ chậm)
+          # 4. Xóa file macOS CLI gây lỗi build iOS
           find . -name "zsign.cpp" -delete
           
           cd ../../..
           
-          # 8. Cài CocoaPods
+          # 5. Cài đặt CocoaPods
           cd ios
           pod install
           
-          # 9. Dọn rác C++ trong Umbrella Header
-          echo "🔥 BẮT ĐẦU CÀN QUÉT UMBRELLA..."
+          # 6. Dọn dẹp Umbrella Header
+          echo "CÀN QUÉT UMBRELLA HEADER..."
           find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*)\.h"/d' {} +
 
-      - name: Dịch code & Vượt rào Apple (Unsigned Build)
+      - name: Xcode Build (Unsigned)
         run: |
           cd ios
           WORKSPACE=$(ls | grep .xcworkspace | head -1)
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
           xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release -destination "generic/platform=iOS" -derivedDataPath ./XCodeData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
 
-      - name: Đóng gói thành file .ipa
+      - name: Đóng gói IPA
         run: |
           mkdir -p Payload
           mv ios/XCodeData/Build/Products/Release-iphoneos/*.app Payload/
           zip -r AppIPAVIET.ipa Payload
 
-      - name: Xuất xưởng gửi file về cho Sếp tải
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: File-IPA-Goc
