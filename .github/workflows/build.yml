@@ -6,23 +6,33 @@ jobs:
   build-ios:
     runs-on: macos-latest
     steps:
-      - name: Checkout Code
+      - name: Tải mã nguồn về
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Cài đặt Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: Install Dependencies
+      - name: Cài đặt thư viện Node
         run: npm install
 
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: Fix C++ Headers and Includes
+      - name: 🛠️ Phẫu thuật C++ & Bơm Thư Viện Zip (CHỐT HẠ)
         run: |
-          echo "BẮT ĐẦU XỬ LÝ C++..."
+          echo "BẮT ĐẦU XỬ LÝ C++ VÀ BƠM LIBZIP..."
+          
+          # --- BƯỚC MỚI: BƠM THƯ VIỆN LIBZIP VÀO PODSPEC ĐỂ LẤY ZIP.H ---
+          PODSPEC=$(find modules -name "*.podspec" | head -n 1)
+          if [ -n "$PODSPEC" ] && ! grep -q "libzip" "$PODSPEC"; then
+            sed -i '' '/s\.name/a\
+              s.dependency "libzip"\
+            ' "$PODSPEC"
+            echo "Đã tiêm thành công libzip vào $PODSPEC"
+          fi
+          
           cd modules/ipa-signer/ios
           
           # 1. Đổi tên openssl tránh xung đột thư viện React Native
@@ -30,16 +40,14 @@ jobs:
           [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
-          # 2. XỬ LÝ LỖI "SET", "STRING": Bổ sung thư viện STL vào tất cả file header (.h)
+          # 2. Bổ sung thư viện chuẩn STL vào tất cả file header (.h)
           for file in archo.h macho.h bundle.h signing.h; do
             if [ -f "$file" ]; then
-              # Xóa dòng cũ nếu có để tránh trùng lặp
               sed -i '' '/#include <set>/d' "$file"
               sed -i '' '/#include <string>/d' "$file"
               sed -i '' '/#include <vector>/d' "$file"
               sed -i '' '/using namespace std;/d' "$file"
               
-              # Bơm trực tiếp thư viện chuẩn vào dòng đầu tiên của file
               echo '#include <set>' > temp_file
               echo '#include <string>' >> temp_file
               echo '#include <vector>' >> temp_file
@@ -74,7 +82,7 @@ jobs:
           
           cd ../../..
           
-          # 6. Pod Install
+          # 6. Pod Install (Sẽ tự động tải libzip cho iOS)
           cd ios
           pod install
           
