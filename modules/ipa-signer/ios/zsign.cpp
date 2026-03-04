@@ -1,7 +1,6 @@
 #include "common.h"
 #include "macho.h"
 #include "bundle.h"
-#include "openssl.h"
 #include "timer.h"
 #include "archive.h"
 

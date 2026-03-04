@@ -1,7 +1,6 @@
 #pragma once
 #include "common.h"
 #include "json.h"
-#include "openssl.h"
 #include <vector>
 
 class ZBundle

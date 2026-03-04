@@ -1,7 +1,6 @@
 #include "common.h"
 #include "json.h"
 #include "mach-o.h"
-#include "openssl.h"
 #include "signing.h"
 #include "macho.h"
 
