@@ -20,35 +20,31 @@ jobs:
       - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật C++ Tận Gốc (Nối Mạch Máu)
+      - name: 🛠️ Phẫu thuật C++ (Làm sạch & Đổi Tên An Toàn)
         run: |
           echo "BẮT ĐẦU VÁ LỖI C++..."
           
           cd modules/ipa-signer/ios
           
-          # 1. Đảm bảo tên file đã được Sếp đổi thành công
-          [ -f "openssl.h" ] && mv openssl.h zsign_openssl.h
-          [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
+          # 1. Đảm bảo file được đổi tên chuẩn (Tránh đụng React Native)
+          find . -name "openssl.h" -execdir mv {} zsign_openssl.h \;
+          find . -name "openssl.cpp" -execdir mv {} zsign_openssl.cpp \;
           
-          # 2. Đồng bộ hóa toàn bộ tên gọi mới trong dự án
-          find . -type f -name "*.*" -exec sed -i '' 's/#include "openssl.h"/#include "zsign_openssl.h"/g' {} +
-          
-          # 3. Nối lại Mạch máu vào đầu các file bị đứt liên lạc
+          # 2. XÓA BỎ cái dòng tiêm bừa từ kịch bản trước (nếu Sếp lỡ lưu vào Github)
           for file in archo.h macho.h bundle.h signing.h signing.cpp; do
-            if [ -f "$file" ] && ! grep -q "zsign_openssl.h" "$file"; then
-              echo '#include "zsign_openssl.h"' > temp_file
-              cat "$file" >> temp_file
-              mv temp_file "$file"
+            if [ -f "$file" ]; then
+              sed -i '' '/^#include "zsign_openssl\.h"$/d' "$file"
             fi
           done
           
-          # 4. Thiến lệnh system() trong util.cpp gây ngất xỉu trên iOS
-          if [ -f "common/util.cpp" ]; then
-            sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' common/util.cpp
-          fi
+          # 3. Chỉ đổi TÊN file bên trong các đoạn code gốc (Đường dẫn tự động giữ nguyên)
+          find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
-          # 5. Tiêu diệt zsign.cpp (File rác chạy trên máy Mac, gây nổ cỗ máy iOS)
-          rm -f zsign.cpp
+          # 4. Thiến lệnh system() trong util.cpp gây ngất xỉu
+          find . -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' {} +
+          
+          # 5. Tiêu diệt zsign.cpp (File CLI chạy trên Mac, gây nổ cỗ máy iOS)
+          find . -name "zsign.cpp" -delete
           
           cd ../../..
           
