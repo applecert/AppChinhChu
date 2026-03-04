@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "AppChinhChu",
+    "slug": "AppChinhChu",
+    "scheme": "myapp",
+    "plugins": [
+      "expo-router"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ipaviet.esign",
+      "infoPlist": {
+        "UIFileSharingEnabled": true,
+        "LSSupportsOpeningDocumentsInPlace": true,
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "6554e796-6e4a-4760-9fcb-407f58e7e69c"
+      }
+    }
+  }
+}
