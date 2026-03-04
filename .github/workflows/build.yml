@@ -6,40 +6,57 @@ jobs:
   build-ios:
     runs-on: macos-latest
     steps:
-      - name: Tải mã nguồn về
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Cài đặt Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: Cài đặt thư viện Node
+      - name: Install Dependencies
         run: npm install
 
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật C++ (Sắp xếp Include chuẩn xác)
+      - name: Fix C++ Headers and Includes
         run: |
           echo "BẮT ĐẦU XỬ LÝ C++..."
           cd modules/ipa-signer/ios
           
-          # 1. Đổi tên file openssl tránh xung đột với React Native
+          # 1. Đổi tên openssl tránh xung đột thư viện React Native
           [ -f "openssl.h" ] && mv openssl.h zsign_openssl.h
           [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
-          # 2. Định dạng lại cấu trúc Include cho các file CPP cốt lõi
+          # 2. XỬ LÝ LỖI "SET", "STRING": Bổ sung thư viện STL vào tất cả file header (.h)
+          for file in archo.h macho.h bundle.h signing.h; do
+            if [ -f "$file" ]; then
+              # Xóa dòng cũ nếu có để tránh trùng lặp
+              sed -i '' '/#include <set>/d' "$file"
+              sed -i '' '/#include <string>/d' "$file"
+              sed -i '' '/#include <vector>/d' "$file"
+              sed -i '' '/using namespace std;/d' "$file"
+              
+              # Bơm trực tiếp thư viện chuẩn vào dòng đầu tiên của file
+              echo '#include <set>' > temp_file
+              echo '#include <string>' >> temp_file
+              echo '#include <vector>' >> temp_file
+              echo 'using namespace std;' >> temp_file
+              cat "$file" >> temp_file
+              mv temp_file "$file"
+            fi
+          done
+          
+          # 3. Ép cấu trúc Include tĩnh cho các file .cpp để chống lỗi Undeclared Identifier
           for file in archo.cpp bundle.cpp macho.cpp signing.cpp; do
             if [ -f "$file" ]; then
-              # Xóa bỏ các khai báo cũ để tránh trùng lặp và sai thứ tự
               sed -i '' '/#include "signing\.h"/d' "$file"
               sed -i '' '/#include "zsign_openssl\.h"/d' "$file"
               sed -i '' '/#include "common\/json\.h"/d' "$file"
               sed -i '' '/#include "macho\.h"/d' "$file"
               
-              # Ép thứ tự đọc file chuẩn xác 100% (Từ vựng cơ bản -> Định nghĩa cao cấp)
               echo '#include "common/json.h"' > temp_file
               echo '#include "zsign_openssl.h"' >> temp_file
               echo '#include "macho.h"' >> temp_file
@@ -49,20 +66,19 @@ jobs:
             fi
           done
           
-          # 3. Xử lý hàm system() không tương thích trên iOS
+          # 4. Vô hiệu hóa hàm system() không được phép dùng trên iOS
           find . -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0; \/\/ system() disabled for iOS/g' {} +
           
-          # 4. Xóa file macOS CLI gây lỗi build iOS
+          # 5. Xóa bỏ file CLI chạy trên macOS
           find . -name "zsign.cpp" -delete
           
           cd ../../..
           
-          # 5. Cài đặt CocoaPods
+          # 6. Pod Install
           cd ios
           pod install
           
-          # 6. Dọn dẹp Umbrella Header
-          echo "CÀN QUÉT UMBRELLA HEADER..."
+          # 7. Dọn dẹp Umbrella Header
           find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*)\.h"/d' {} +
 
       - name: Xcode Build (Unsigned)
@@ -72,13 +88,13 @@ jobs:
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
           xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release -destination "generic/platform=iOS" -derivedDataPath ./XCodeData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
 
-      - name: Đóng gói IPA
+      - name: Package IPA
         run: |
           mkdir -p Payload
           mv ios/XCodeData/Build/Products/Release-iphoneos/*.app Payload/
           zip -r AppIPAVIET.ipa Payload
 
-      - name: Upload IPA Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: File-IPA-Goc
