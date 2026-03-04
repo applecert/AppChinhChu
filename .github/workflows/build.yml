@@ -29,8 +29,13 @@ jobs:
           curl -L -o libzip.tar.gz https://github.com/nih-at/libzip/releases/download/v1.9.2/libzip-1.9.2.tar.gz
           tar -xzf libzip.tar.gz
           cd libzip-1.9.2
+          
+          # Ép thằng thợ rèn CMake không được chê bản vẽ cũ
+          sed -i '' 's/cmake_minimum_required.*/cmake_minimum_required(VERSION 3.5)/g' CMakeLists.txt
+          
           mkdir build && cd build
-          cmake .. -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_ARCHITECTURES=arm64 -DBUILD_SHARED_LIBS=OFF -DENABLE_BZIP2=OFF -DENABLE_LZMA=OFF -DENABLE_ZSTD=OFF -DENABLE_OPENSSL=OFF -DCMAKE_INSTALL_PREFIX=../../modules/ipa-signer/ios/libzip_ios
+          # Tiêm cờ -DCMAKE_POLICY_VERSION_MINIMUM=3.5 để chữa dứt điểm lỗi phút 1:31
+          cmake .. -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_ARCHITECTURES=arm64 -DBUILD_SHARED_LIBS=OFF -DENABLE_BZIP2=OFF -DENABLE_LZMA=OFF -DENABLE_ZSTD=OFF -DENABLE_OPENSSL=OFF -DCMAKE_INSTALL_PREFIX=../../modules/ipa-signer/ios/libzip_ios
           make -j4
           make install
           cd ../..
@@ -38,13 +43,11 @@ jobs:
           # 2. CHỈNH SỬA PODSPEC ĐỂ TRANG BỊ VŨ KHÍ VỪA RÈN & OPENSSL
           PODSPEC=$(find modules -name "*.podspec" | head -n 1)
           if [ -n "$PODSPEC" ]; then
-            # Xóa sạch các vết tích tiêm hỏng trước đó
             perl -pi -e 's/.*s\.dependency "libzip.*//g' "$PODSPEC"
             perl -pi -e 's/.*s\.dependency "OpenSSL.*//g' "$PODSPEC"
             perl -pi -e 's/.*vendored_libraries.*//g' "$PODSPEC"
             perl -pi -e 's/.*pod_target_xcconfig.*//g' "$PODSPEC"
             
-            # Trang bị libzip tĩnh và OpenSSL-Universal vào file Podspec
             perl -pi -e 's/(s\.name.*)/$1\n  s.dependency "OpenSSL-Universal"\n  s.libraries = "z"\n  s.vendored_libraries = "ios\/libzip_ios\/lib\/libzip.a"\n  s.pod_target_xcconfig = { "HEADER_SEARCH_PATHS" => "\"$(PODS_TARGET_SRCROOT)\/ios\/libzip_ios\/include\"" }/g' "$PODSPEC"
             echo "Đã trang bị xong libzip.a và OpenSSL vào dự án!"
           fi
