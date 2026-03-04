@@ -24,8 +24,8 @@ jobs:
         run: |
           cd ios
           pod install
-          echo "Bắt đầu xé bỏ C++ khỏi Umbrella Header..."
-          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -e '/archo\.h/d' -e '/bundle\.h/d' -e '/common\.h/d' -e '/macho\.h/d' -e '/signing\.h/d' -e '/zsign\.h/d' {} +
+          echo "Bắt đầu xé bỏ TOÀN BỘ C++ khỏi Umbrella Header..."
+          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/(archo|archive|bundle|common|macho|signing|zsign|zsign_openssl)\.h/d' {} +
 
       - name: Dịch code & Vượt rào Apple (Unsigned Build)
         run: |
