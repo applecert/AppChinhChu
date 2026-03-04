@@ -20,10 +20,12 @@ jobs:
       - name: Nhào nặn khung xương iOS (Expo Prebuild)
         run: npx expo prebuild -p ios --clean
 
-      - name: Cài đặt lõi C++ (CocoaPods)
+      - name: Cài đặt lõi C++ (CocoaPods) & Vá lỗi Umbrella
         run: |
           cd ios
           pod install
+          echo "Bắt đầu xé bỏ C++ khỏi Umbrella Header..."
+          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -e '/archo\.h/d' -e '/bundle\.h/d' -e '/common\.h/d' -e '/macho\.h/d' -e '/signing\.h/d' -e '/zsign\.h/d' {} +
 
       - name: Dịch code & Vượt rào Apple (Unsigned Build)
         run: |
