@@ -14,23 +14,13 @@ jobs:
         with:
           node-version: '18'
 
-      - name: ⚡ Bộ nhớ đệm (Bỏ qua thời gian tải)
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            ios/Pods
-          key: ${{ runner.os }}-expo-build-${{ hashFiles('package-lock.json', 'ios/Podfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-expo-build-
-
       - name: Cài đặt thư viện Node
         run: npm install
 
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ BƯỚC 1: DỌN DẸP VÀ CHUẨN BỊ VŨ KHÍ
+      - name: 🛠️ BƯỚC 1 - DỌN DẸP VÀ CHUẨN BỊ VŨ KHÍ
         run: |
           echo "Tải thư viện nén Minizip..."
           cd modules/ipa-signer/ios
@@ -58,7 +48,7 @@ jobs:
 
           [ -f "util.cpp" ] && sed -i '' 's/int status = system(.*);/int status = 0;/g' util.cpp
 
-      - name: 🛠️ BƯỚC 2: CẤP QUYỀN PODSPEC
+      - name: 🛠️ BƯỚC 2 - CẤP QUYỀN PODSPEC
         run: |
           python3 -c "
           import glob
@@ -69,21 +59,18 @@ jobs:
                   with open(pod, 'w') as f: f.write(c)
           "
 
-      - name: 🛠️ BƯỚC 3: CÀI ĐẶT COCOAPODS
+      - name: 🛠️ BƯỚC 3 - CÀI ĐẶT COCOAPODS
         run: |
           cd ios
           pod install
 
-      - name: 💣 BƯỚC 4: RÚT CỦI ĐÁY NỒI (SIÊU ĐỘT PHÁ)
+      - name: 💣 BƯỚC 4 - RÚT CỦI ĐÁY NỒI (SIÊU ĐỘT PHÁ)
         run: |
-          # BƯỚC QUYẾT ĐỊNH: Xóa hoàn toàn sự tồn tại của C++ khỏi tầm mắt của Swift
           echo "Đang tiêu diệt C++ khỏi thư mục Public..."
           cd ios/Pods/Headers/Public/IpaSigner 2>/dev/null || true
           
-          # 1. Xóa vật lý các file C++ đang nằm chễm chệ ở thư mục Public
           rm -f archo.h archive.h base64.h bundle.h common.h crypto.h fs.h json.h log.h macho.h mman.h md5.h zsign_openssl.h sha1.h sha256.h signing.h sys.h timer.h util.h zip.h unzip.h ioapi.h crypt.h
           
-          # 2. Xóa tên chúng khỏi danh sách Umbrella Header
           echo "Đang sửa danh sách Umbrella..."
           UMBRELLA="../../Target Support Files/IpaSigner/IpaSigner-umbrella.h"
           if [ -f "$UMBRELLA" ]; then
