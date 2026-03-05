@@ -16,19 +16,29 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
-  
-  # 🔴 VŨ KHÍ HẠNG NẶNG NẰM Ở ĐÂY:
   s.dependency 'OpenSSL-Universal'
   s.dependency 'SSZipArchive'
 
   s.source_files = "**/*.{h,m,mm,swift,hpp,cpp,c}"
   
-  # Ép Expo biên dịch bằng C++17 để không bị lỗi ZSign
+  # 🔴 SCRIPT TỰ ĐỘNG DIỆT CỎ TRÊN MÁY CHỦ MAC
+  s.prepare_command = <<-CMD
+    # Tự động tạo file ints.h ảo chứa thư viện chuẩn để lừa compiler
+    mkdir -p ios/minizip
+    echo '#include <stdint.h>' > ios/minizip/ints.h || true
+    echo '#include <stdint.h>' > ios/ints.h || true
+    
+    # Tự động tìm và sửa lỗi trong ioapi.h nếu có
+    find . -name "ioapi.h" -exec sed -i '' 's/"ints.h"/<stdint.h>/g' {} + || true
+  CMD
+
+  # Ép Expo biên dịch bằng C++17 và chỉ đường cho nó tìm thấy file ints.h ảo
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
     'SWIFT_COMPILATION_MODE' => 'wholemodule',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'gnu++17',
     'CLANG_CXX_LIBRARY' => 'libc++',
-    'OTHER_CPLUSPLUSFLAGS' => '-fobjc-arc'
+    'OTHER_CPLUSPLUSFLAGS' => '-fobjc-arc',
+    'HEADER_SEARCH_PATHS' => '"${PODS_TARGET_SRCROOT}/ios" "${PODS_TARGET_SRCROOT}/ios/minizip"'
   }
 end
