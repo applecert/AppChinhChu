@@ -6,28 +6,21 @@ jobs:
   build-ios:
     runs-on: macos-latest
     steps:
-      - name: Tải mã nguồn về
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Cài đặt Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: ⚡ Bộ nhớ đệm (Tăng tốc tải)
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-expo-build-${{ hashFiles('package-lock.json') }}
-          restore-keys: ${{ runner.os }}-expo-build-
-
-      - name: Cài đặt thư viện Node
+      - name: Npm Install
         run: npm install
 
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ BƯỚC 1 - DỌN DẸP VÀ CHUẨN BỊ VŨ KHÍ
+      - name: Step 1 - Don Dep Va Chuan Bi
         run: |
           cd modules/ipa-signer/ios
           mkdir -p minizip
@@ -40,25 +33,20 @@ jobs:
           curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/ioapi.c || true
           curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/crypt.h || true
           cd ..
-          
           rm -f zsign.cpp || true
           [ -f openssl.h ] && mv openssl.h zsign_openssl.h || true
           [ -f openssl.cpp ] && mv openssl.cpp zsign_openssl.cpp || true
-          
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} + || true
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/<openssl\.h>/"zsign_openssl.h"/g' {} + || true
-          
           find . -maxdepth 1 -type f -exec sed -i '' 's/<zip\.h>/"minizip\/zip.h"/g' {} + || true
           find . -maxdepth 1 -type f -exec sed -i '' 's/<unzip\.h>/"minizip\/unzip.h"/g' {} + || true
-          
           if [ -d "common" ]; then
             find common -type f -exec sed -i '' 's/<zip\.h>/"..\/minizip\/zip.h"/g' {} + || true
             find common -type f -exec sed -i '' 's/<unzip\.h>/"..\/minizip\/unzip.h"/g' {} + || true
           fi
-          
           find . -type f -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0;/g' {} + || true
 
-      - name: 🛠️ BƯỚC 2 - CẤP QUYỀN PODSPEC
+      - name: Step 2 - Patch Podspec
         run: |
           cat << 'EOF' > patch_podspec.py
           import glob
@@ -72,55 +60,44 @@ jobs:
           EOF
           python3 patch_podspec.py
 
-      - name: 🛠️ BƯỚC 3 - CÀI ĐẶT COCOAPODS
+      - name: Step 3 - Pod Install
         run: |
           cd ios
           pod install
 
-      - name: 💣 BƯỚC 4 - BỊT MẮT SWIFT TUYỆT ĐỐI BẰNG PYTHON (QUYẾT ĐỊNH)
+      - name: Step 4 - Clean Umbrella Header
         run: |
           cat << 'EOF' > clean_umbrella.py
           import os, glob
-
-          print("--- BẮT ĐẦU CHIẾN DỊCH BỊT MẮT SWIFT ---")
+          print("--- BAT DAU DON DEP ---")
           umbrella_files = glob.glob('ios/Pods/**/IpaSigner-umbrella.h', recursive=True)
-
-          if not umbrella_files:
-              print("Không tìm thấy Umbrella Header.")
-
           for u_file in umbrella_files:
-              print(f"Phát hiện danh sách: {u_file}")
-              with open(u_file, 'r') as f:
-                  lines = f.readlines()
-              
+              with open(u_file, 'r') as f: lines = f.readlines()
               with open(u_file, 'w') as f:
                   for line in lines:
                       if line.startswith('#import "') or line.startswith('#import <IpaSigner/'):
                           if 'IpaSignerModule' in line or 'IpaSignerView' in line or 'ZSignWrapper' in line or 'Expo' in line:
                               f.write(line)
-                              print(f" [GIỮ AN TOÀN] {line.strip()}")
-                          else:
-                              print(f" [XÓA BỎ C++] {line.strip()}")
                       else:
                           f.write(line)
-          print("--- CHIẾN DỊCH THÀNH CÔNG ---")
+          print("--- HOAN THANH ---")
           EOF
           python3 clean_umbrella.py
 
-      - name: Xcode Build (Unsigned)
+      - name: Step 5 - Xcode Build
         run: |
           cd ios
           WORKSPACE=$(ls | grep .xcworkspace | head -1)
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
           xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release -destination "generic/platform=iOS" -derivedDataPath ./XCodeData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
 
-      - name: Package IPA
+      - name: Step 6 - Package IPA
         run: |
           mkdir -p Payload
           mv ios/XCodeData/Build/Products/Release-iphoneos/*.app Payload/
           zip -r AppIPAVIET.ipa Payload
 
-      - name: Upload Artifact
+      - name: Step 7 - Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: File-IPA-Goc
