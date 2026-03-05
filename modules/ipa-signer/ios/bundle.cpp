@@ -5,6 +5,9 @@
 #include "sys/stat.h"
 #include "sys/types.h"
 
+// --- THÊM DÒNG NÀY ĐỂ CHỮA LỖI INCOMPLETE TYPE ---
+#include "zsign_openssl.h"
+
 ZBundle::ZBundle()
 {
 	m_pSignAsset = NULL;
