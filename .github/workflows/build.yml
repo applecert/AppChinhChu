@@ -14,7 +14,7 @@ jobs:
         with:
           node-version: '18'
 
-      - name: ⚡ Bộ nhớ đệm (Tăng tốc độ Build)
+      - name: ⚡ Bộ nhớ đệm (Bỏ qua thời gian tải)
         uses: actions/cache@v4
         with:
           path: |
@@ -30,83 +30,66 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ ĐỔI MÁU HỆ THỐNG (BẢN PYTHON TỐI THƯỢNG)
+      - name: 🛠️ BƯỚC 1: DỌN DẸP VÀ CHUẨN BỊ VŨ KHÍ
         run: |
-          cat << 'EOF' > fix_all.py
-          import os, urllib.request, glob, re
+          echo "Tải thư viện nén Minizip..."
+          cd modules/ipa-signer/ios
+          mkdir -p minizip
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/unzip.h -o minizip/unzip.h
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/unzip.c -o minizip/unzip.c
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/zip.h -o minizip/zip.h
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/zip.c -o minizip/zip.c
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/ioapi.h -o minizip/ioapi.h
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/ioapi.c -o minizip/ioapi.c
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/crypt.h -o minizip/crypt.h
 
-          ios_dir = "modules/ipa-signer/ios"
+          echo "Xử lý file rác và chống xung đột..."
+          rm -f zsign.cpp
+          [ -f openssl.h ] && mv openssl.h zsign_openssl.h
+          [ -f openssl.cpp ] && mv openssl.cpp zsign_openssl.cpp
 
-          print("1. Tải Minizip...")
-          minizip_dir = os.path.join(ios_dir, "minizip")
-          os.makedirs(minizip_dir, exist_ok=True)
-          base_url = "https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/"
-          for f in ["unzip.h", "unzip.c", "zip.h", "zip.c", "ioapi.h", "ioapi.c", "crypt.h"]:
-              try: urllib.request.urlretrieve(base_url + f, os.path.join(minizip_dir, f))
-              except: pass
+          find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
+          find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/<openssl\.h>/"zsign_openssl.h"/g' {} +
 
-          print("2. Dọn zsign cli & Đổi tên openssl...")
-          if os.path.exists(f"{ios_dir}/zsign.cpp"): os.remove(f"{ios_dir}/zsign.cpp")
-          if os.path.exists(f"{ios_dir}/openssl.h"): os.rename(f"{ios_dir}/openssl.h", f"{ios_dir}/zsign_openssl.h")
-          if os.path.exists(f"{ios_dir}/openssl.cpp"): os.rename(f"{ios_dir}/openssl.cpp", f"{ios_dir}/zsign_openssl.cpp")
+          find . -maxdepth 1 -type f -exec sed -i '' 's/<zip\.h>/"minizip\/zip.h"/g' {} +
+          find . -maxdepth 1 -type f -exec sed -i '' 's/<unzip\.h>/"minizip\/unzip.h"/g' {} +
+          find common -type f -exec sed -i '' 's/<zip\.h>/"..\/minizip\/zip.h"/g' {} +
+          find common -type f -exec sed -i '' 's/<unzip\.h>/"..\/minizip\/unzip.h"/g' {} +
 
-          print("3. KHOÁC ÁO TÀNG HÌNH CHO C++ (.h -> .hpp)...")
-          # Danh sách tội đồ C++ khiến Swift bị mù chữ
-          zsign_headers = [
-              'archo', 'archive', 'base64', 'bundle', 'common', 'crypto', 'fs', 'json', 
-              'log', 'macho', 'md5', 'mman', 'sha1', 'sha256', 'signing', 'sys', 'timer', 
-              'util', 'zsign_openssl'
-          ]
-          for filepath in glob.glob(f"{ios_dir}/**/*.h", recursive=True):
-              basename = os.path.splitext(os.path.basename(filepath))[0]
-              if basename in zsign_headers:
-                  os.rename(filepath, filepath[:-2] + '.hpp')
+          [ -f "util.cpp" ] && sed -i '' 's/int status = system(.*);/int status = 0;/g' util.cpp
 
-          print("4. Cập nhật đường dẫn tự động...")
-          for filepath in glob.glob(f"{ios_dir}/**/*", recursive=True):
-              if not os.path.isfile(filepath) or not filepath.endswith(('.cpp', '.hpp', '.c', '.m', '.mm')): continue
-              
-              with open(filepath, 'r', encoding='utf-8', errors='ignore') as f: content = f.read()
-
-              # Cập nhật openssl
-              content = content.replace('<openssl.h>', '"zsign_openssl.hpp"').replace('"openssl.h"', '"zsign_openssl.hpp"')
-
-              # Phân luồng minizip chuẩn xác
-              if '/common/' in filepath or '\\common\\' in filepath:
-                  content = content.replace('<zip.h>', '"../minizip/zip.h"').replace('<unzip.h>', '"../minizip/unzip.h"')
-              else:
-                  content = content.replace('<zip.h>', '"minizip/zip.h"').replace('<unzip.h>', '"minizip/unzip.h"')
-
-              # Tự động thay thế các include "xxx.h" thành "xxx.hpp"
-              def replacer(match):
-                  inc_path = match.group(1)
-                  if os.path.basename(inc_path) in zsign_headers:
-                      return f'#include "{inc_path}.hpp"'
-                  return match.group(0)
-              
-              content = re.sub(r'#include\s+"([^"]+)\.h"', replacer, content)
-
-              # Cắt đứt hàm system() làm sập iOS
-              if 'util.cpp' in filepath:
-                  content = re.sub(r'int\s+status\s*=\s*system\(.*?\);', 'int status = 0;', content)
-
-              with open(filepath, 'w', encoding='utf-8') as f: f.write(content)
-
-          print("5. Bơm quyền Podspec...")
+      - name: 🛠️ BƯỚC 2: CẤP QUYỀN PODSPEC
+        run: |
+          python3 -c "
+          import glob
           for pod in glob.glob('modules/**/*.podspec', recursive=True):
-              with open(pod, 'r') as f: lines = f.readlines()
-              with open(pod, 'w') as f:
-                  for line in lines:
-                      if 'OpenSSL-Universal' in line or "s.libraries = 'z'" in line: continue
-                      if line.strip() == 'end':
-                          f.write("  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n")
-                      f.write(line)
-          EOF
-          python3 fix_all.py
-          
-          echo "6. CÀI ĐẶT COCOAPODS..."
+              with open(pod, 'r') as f: c = f.read()
+              if 'OpenSSL-Universal' not in c:
+                  c = c[:c.rfind('end')] + \"\n  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n\" + c[c.rfind('end'):]
+                  with open(pod, 'w') as f: f.write(c)
+          "
+
+      - name: 🛠️ BƯỚC 3: CÀI ĐẶT COCOAPODS
+        run: |
           cd ios
           pod install
+
+      - name: 💣 BƯỚC 4: RÚT CỦI ĐÁY NỒI (SIÊU ĐỘT PHÁ)
+        run: |
+          # BƯỚC QUYẾT ĐỊNH: Xóa hoàn toàn sự tồn tại của C++ khỏi tầm mắt của Swift
+          echo "Đang tiêu diệt C++ khỏi thư mục Public..."
+          cd ios/Pods/Headers/Public/IpaSigner 2>/dev/null || true
+          
+          # 1. Xóa vật lý các file C++ đang nằm chễm chệ ở thư mục Public
+          rm -f archo.h archive.h base64.h bundle.h common.h crypto.h fs.h json.h log.h macho.h mman.h md5.h zsign_openssl.h sha1.h sha256.h signing.h sys.h timer.h util.h zip.h unzip.h ioapi.h crypt.h
+          
+          # 2. Xóa tên chúng khỏi danh sách Umbrella Header
+          echo "Đang sửa danh sách Umbrella..."
+          UMBRELLA="../../Target Support Files/IpaSigner/IpaSigner-umbrella.h"
+          if [ -f "$UMBRELLA" ]; then
+            sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl|zsign_openssl|sha1|sha256|signing|sys|timer|util|zip|unzip|ioapi|crypt)\.h"/d' "$UMBRELLA"
+          fi
+          echo "Thành công che mắt Swift!"
 
       - name: Xcode Build (Unsigned)
         run: |
