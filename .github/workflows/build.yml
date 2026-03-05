@@ -33,18 +33,38 @@ jobs:
           curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/ioapi.c || true
           curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/crypt.h || true
           cd ..
+          
           rm -f zsign.cpp || true
           [ -f openssl.h ] && mv openssl.h zsign_openssl.h || true
           [ -f openssl.cpp ] && mv openssl.cpp zsign_openssl.cpp || true
+          
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} + || true
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/<openssl\.h>/"zsign_openssl.h"/g' {} + || true
+          
           find . -maxdepth 1 -type f -exec sed -i '' 's/<zip\.h>/"minizip\/zip.h"/g' {} + || true
           find . -maxdepth 1 -type f -exec sed -i '' 's/<unzip\.h>/"minizip\/unzip.h"/g' {} + || true
+          
           if [ -d "common" ]; then
             find common -type f -exec sed -i '' 's/<zip\.h>/"..\/minizip\/zip.h"/g' {} + || true
             find common -type f -exec sed -i '' 's/<unzip\.h>/"..\/minizip\/unzip.h"/g' {} + || true
           fi
+          
           find . -type f -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0;/g' {} + || true
+
+          # --- VŨ KHÍ MỚI: GIẢI MÃ VÒNG LẶP C++ ZSignAsset ---
+          python3 -c "
+          import os
+          for f in ['archo.h', 'macho.h', 'bundle.h']:
+              if os.path.exists(f):
+                  with open(f, 'r') as file: c = file.read()
+                  if 'class ZSignAsset;' not in c:
+                      with open(f, 'w') as file: file.write('class ZSignAsset;\n' + c)
+          
+          if os.path.exists('signing.cpp'):
+              with open('signing.cpp', 'r') as file: c = file.read()
+              if '#include \"signing.h\"' not in c:
+                  with open('signing.cpp', 'w') as file: file.write('#include \"signing.h\"\n' + c)
+          "
 
       - name: Step 2 - Patch Podspec
         run: |
