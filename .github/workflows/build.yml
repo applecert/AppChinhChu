@@ -30,7 +30,7 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật Lõi C++ (BIỆN PHÁP CHỐT HẠ SIÊU TỐI ƯU)
+      - name: 🛠️ Phẫu thuật Lõi C++ (KẸP CHẢ 2 ĐẦU - BẢO MẬT TUYỆT ĐỐI)
         run: |
           echo "1. BƠM TRỰC TIẾP THƯ VIỆN MINIZIP..."
           cd modules/ipa-signer/ios
@@ -43,10 +43,8 @@ jobs:
           cd ..
           
           echo "2. FIX ĐƯỜNG DẪN MINIZIP CHUẨN XÁC THEO TỪNG TẦNG THƯ MỤC..."
-          # Với các file nằm ngoài cùng (tầng ios/)
           find . -maxdepth 1 -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<zip\.h>/"minizip\/zip.h"/g' {} +
           find . -maxdepth 1 -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<unzip\.h>/"minizip\/unzip.h"/g' {} +
-          # Với các file nằm trong ngõ (tầng ios/common/ - Sửa đúng lỗi Sếp vừa gửi)
           find common -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<zip\.h>/"..\/minizip\/zip.h"/g' {} +
           find common -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<unzip\.h>/"..\/minizip\/unzip.h"/g' {} +
 
@@ -63,15 +61,15 @@ jobs:
           EOF
           python3 patch_podspec.py
           
-          echo "4. VŨ KHÍ TỐI THƯỢNG: ĐÓNG BĂNG C++ VỚI SWIFT..."
+          echo "4. VŨ KHÍ TỐI THƯỢNG: ĐÓNG BĂNG 100% FILE C++..."
           cd modules/ipa-signer/ios
           [ -f "openssl.h" ] && mv openssl.h zsign_openssl.h
           [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
-          # Khoác áo tàng hình cho các file C++ để ngăn Swift đọc nhầm và báo lỗi
-          for file in archo.h macho.h bundle.h signing.h common/common.h common/json.h common/log.h; do
-            if [ -f "$file" ] && ! grep -q "__cplusplus" "$file"; then
+          # Quét sạch sành sanh tất cả các file header C++ (trừ file Swift cần)
+          for file in $(find . -type f -name "*.h" ! -name "IpaSignerModule.h" ! -name "IpaSignerView.h" ! -name "ZSignWrapper.h" ! -name "IpaSigner-umbrella.h"); do
+            if ! grep -q "__cplusplus" "$file"; then
               echo "#ifdef __cplusplus" > temp_hdr
               echo "#include <set>" >> temp_hdr
               echo "#include <string>" >> temp_hdr
@@ -108,6 +106,10 @@ jobs:
           echo "6. CÀI ĐẶT COCOAPODS..."
           cd ios
           pod install
+          
+          echo "7. DỌN SẠCH MẶT TIỀN UMBRELLA HEADER..."
+          # Đảm bảo CocoaPods có xả rác ra cũng bị quét sạch không chừa một chữ
+          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import.*(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*|zip|unzip|ioapi|crypt)\.h/d' {} +
 
       - name: Xcode Build (Unsigned)
         run: |
