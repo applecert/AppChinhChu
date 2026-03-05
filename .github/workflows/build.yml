@@ -56,7 +56,6 @@ jobs:
             find common -type f -exec sed -i '' 's/<unzip\.h>/"..\/minizip\/unzip.h"/g' {} + || true
           fi
           
-          # ĐÂY LÀ CHÌA KHÓA: Tìm quét toàn bộ mọi ngóc ngách để diệt hàm system()
           find . -type f -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0;/g' {} + || true
 
       - name: 🛠️ BƯỚC 2 - CẤP QUYỀN PODSPEC
@@ -87,7 +86,7 @@ jobs:
           umbrella_files = glob.glob('ios/Pods/**/IpaSigner-umbrella.h', recursive=True)
 
           if not umbrella_files:
-              print("Không tìm thấy Umbrella Header, có thể Apple đã tự fix.")
+              print("Không tìm thấy Umbrella Header.")
 
           for u_file in umbrella_files:
               print(f"Phát hiện danh sách: {u_file}")
@@ -96,17 +95,13 @@ jobs:
               
               with open(u_file, 'w') as f:
                   for line in lines:
-                      # Lọc các dòng import nội bộ của dự án
                       if line.startswith('#import "') or line.startswith('#import <IpaSigner/'):
-                          # CHỈ GIỮ LẠI các file giao tiếp của React Native / Expo
                           if 'IpaSignerModule' in line or 'IpaSignerView' in line or 'ZSignWrapper' in line or 'Expo' in line:
                               f.write(line)
                               print(f" [GIỮ AN TOÀN] {line.strip()}")
                           else:
-                              # XÓA TOÀN BỘ CÁC FILE C++ KHỎI DANH SÁCH
                               print(f" [XÓA BỎ C++] {line.strip()}")
                       else:
-                          # Giữ nguyên các dòng hệ thống (Foundation, UIKit...)
                           f.write(line)
           print("--- CHIẾN DỊCH THÀNH CÔNG ---")
           EOF
