@@ -56,7 +56,8 @@ jobs:
             find common -type f -exec sed -i '' 's/<unzip\.h>/"..\/minizip\/unzip.h"/g' {} + || true
           fi
           
-          [ -f "util.cpp" ] && sed -i '' 's/int status = system(.*);/int status = 0;/g' util.cpp || true
+          # ĐÂY LÀ CHÌA KHÓA: Tìm quét toàn bộ mọi ngóc ngách để diệt hàm system()
+          find . -type f -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0;/g' {} + || true
 
       - name: 🛠️ BƯỚC 2 - CẤP QUYỀN PODSPEC
         run: |
@@ -102,7 +103,7 @@ jobs:
                               f.write(line)
                               print(f" [GIỮ AN TOÀN] {line.strip()}")
                           else:
-                              # XÓA TOÀN BỘ CÁC FILE C++ KHỎI DANH SÁCH (Sát thủ giấu mặt)
+                              # XÓA TOÀN BỘ CÁC FILE C++ KHỎI DANH SÁCH
                               print(f" [XÓA BỎ C++] {line.strip()}")
                       else:
                           # Giữ nguyên các dòng hệ thống (Foundation, UIKit...)
