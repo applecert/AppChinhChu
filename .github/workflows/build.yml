@@ -76,7 +76,8 @@ jobs:
               echo "#include <vector>" >> temp_hdr
               echo "using namespace std;" >> temp_hdr
               cat "$file" >> temp_hdr
-              echo "#endif" >> temp_hdr
+              echo "" >> temp_hdr       # <--- ĐÂY LÀ CHÌA KHÓA: Bơm thêm 1 dòng trống để ngắt đuôi code cũ
+              echo "#endif" >> temp_hdr # <--- Đóng thẻ cực kỳ an toàn
               mv temp_hdr "$file"
             fi
           done
