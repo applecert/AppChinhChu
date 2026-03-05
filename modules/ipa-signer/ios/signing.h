@@ -1,5 +1,12 @@
 #pragma once
 
+#include "common.h"
+#include "macho.h"
+#include "zsign_openssl.h"
+
+// Khai báo trước class ZSignAsset để trình biên dịch nhận diện được
+class ZSignAsset;
+
 class ZSign
 {
 public:
