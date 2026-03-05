@@ -30,7 +30,7 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ BƯỚC 1: DỌN DẸP VÀ CHUẨN BỊ VŨ KHÍ (BỌC THÉP)
+      - name: 🛠️ BƯỚC 1 - DỌN DẸP VÀ CHUẨN BỊ VŨ KHÍ
         run: |
           echo "Tải thư viện nén Minizip..."
           cd modules/ipa-signer/ios
@@ -44,18 +44,15 @@ jobs:
           curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/ioapi.c || true
           curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/crypt.h || true
           cd ..
-
+          
           echo "Xử lý file rác và chống xung đột..."
           rm -f zsign.cpp || true
-          
-          # Dùng if chuẩn mực để không bị sập exit code 1
           if [ -f "openssl.h" ]; then mv openssl.h zsign_openssl.h; fi
           if [ -f "openssl.cpp" ]; then mv openssl.cpp zsign_openssl.cpp; fi
-
-          # Thêm || true vào mọi lệnh sed để cỗ máy luôn tiến về phía trước
+          
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} + || true
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/<openssl\.h>/"zsign_openssl.h"/g' {} + || true
-
+          
           find . -maxdepth 1 -type f -exec sed -i '' 's/<zip\.h>/"minizip\/zip.h"/g' {} + || true
           find . -maxdepth 1 -type f -exec sed -i '' 's/<unzip\.h>/"minizip\/unzip.h"/g' {} + || true
           
@@ -63,26 +60,29 @@ jobs:
             find common -type f -exec sed -i '' 's/<zip\.h>/"..\/minizip\/zip.h"/g' {} + || true
             find common -type f -exec sed -i '' 's/<unzip\.h>/"..\/minizip\/unzip.h"/g' {} + || true
           fi
-
+          
           if [ -f "util.cpp" ]; then sed -i '' 's/int status = system(.*);/int status = 0;/g' util.cpp; fi
 
-      - name: 🛠️ BƯỚC 2: CẤP QUYỀN PODSPEC
+      - name: 🛠️ BƯỚC 2 - CẤP QUYỀN PODSPEC
         run: |
-          python3 -c "
+          cat << 'EOF' > patch_podspec.py
           import glob
           for pod in glob.glob('modules/**/*.podspec', recursive=True):
               with open(pod, 'r') as f: c = f.read()
               if 'OpenSSL-Universal' not in c:
-                  c = c[:c.rfind('end')] + \"\n  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n\" + c[c.rfind('end'):]
-                  with open(pod, 'w') as f: f.write(c)
-          "
+                  idx = c.rfind('end')
+                  if idx != -1:
+                      c = c[:idx] + "\n  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n" + c[idx:]
+                      with open(pod, 'w') as f: f.write(c)
+          EOF
+          python3 patch_podspec.py
 
-      - name: 🛠️ BƯỚC 3: CÀI ĐẶT COCOAPODS
+      - name: 🛠️ BƯỚC 3 - CÀI ĐẶT COCOAPODS
         run: |
           cd ios
           pod install
 
-      - name: 💣 BƯỚC 4: RÚT CỦI ĐÁY NỒI (SIÊU ĐỘT PHÁ)
+      - name: 💣 BƯỚC 4 - RÚT CỦI ĐÁY NỒI (SIÊU ĐỘT PHÁ)
         run: |
           echo "Đang tiêu diệt C++ khỏi thư mục Public..."
           cd ios/Pods/Headers/Public/IpaSigner 2>/dev/null || true
