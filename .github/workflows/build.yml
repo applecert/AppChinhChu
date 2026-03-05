@@ -30,45 +30,69 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ KỊCH BẢN PYTHON TỐI THƯỢNG (CHẠY 1 LẦN LÀ XONG)
+      - name: 🛠️ ĐỔI MÁU HỆ THỐNG (BẢN PYTHON TỐI THƯỢNG)
         run: |
           cat << 'EOF' > fix_all.py
           import os, urllib.request, glob, re
-          
-          print("1. Tải thư viện Minizip trực tiếp...")
+
           ios_dir = "modules/ipa-signer/ios"
+
+          print("1. Tải Minizip...")
           minizip_dir = os.path.join(ios_dir, "minizip")
           os.makedirs(minizip_dir, exist_ok=True)
           base_url = "https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/"
           for f in ["unzip.h", "unzip.c", "zip.h", "zip.c", "ioapi.h", "ioapi.c", "crypt.h"]:
-              urllib.request.urlretrieve(base_url + f, os.path.join(minizip_dir, f))
-          
-          print("2. Đổi tên OpenSSL và dọn rác...")
+              try: urllib.request.urlretrieve(base_url + f, os.path.join(minizip_dir, f))
+              except: pass
+
+          print("2. Dọn zsign cli & Đổi tên openssl...")
           if os.path.exists(f"{ios_dir}/zsign.cpp"): os.remove(f"{ios_dir}/zsign.cpp")
           if os.path.exists(f"{ios_dir}/openssl.h"): os.rename(f"{ios_dir}/openssl.h", f"{ios_dir}/zsign_openssl.h")
           if os.path.exists(f"{ios_dir}/openssl.cpp"): os.rename(f"{ios_dir}/openssl.cpp", f"{ios_dir}/zsign_openssl.cpp")
-          
-          print("3. Chuẩn hóa chính xác đường dẫn C++...")
-          for filepath in glob.glob(f"{ios_dir}/**/*.[h|c|cpp|m|mm]*", recursive=True):
-              if not os.path.isfile(filepath): continue
+
+          print("3. KHOÁC ÁO TÀNG HÌNH CHO C++ (.h -> .hpp)...")
+          # Danh sách tội đồ C++ khiến Swift bị mù chữ
+          zsign_headers = [
+              'archo', 'archive', 'base64', 'bundle', 'common', 'crypto', 'fs', 'json', 
+              'log', 'macho', 'md5', 'mman', 'sha1', 'sha256', 'signing', 'sys', 'timer', 
+              'util', 'zsign_openssl'
+          ]
+          for filepath in glob.glob(f"{ios_dir}/**/*.h", recursive=True):
+              basename = os.path.splitext(os.path.basename(filepath))[0]
+              if basename in zsign_headers:
+                  os.rename(filepath, filepath[:-2] + '.hpp')
+
+          print("4. Cập nhật đường dẫn tự động...")
+          for filepath in glob.glob(f"{ios_dir}/**/*", recursive=True):
+              if not os.path.isfile(filepath) or not filepath.endswith(('.cpp', '.hpp', '.c', '.m', '.mm')): continue
+              
               with open(filepath, 'r', encoding='utf-8', errors='ignore') as f: content = f.read()
-              
-              # Gắn đúng thư viện openssl
-              content = content.replace('"openssl.h"', '"zsign_openssl.h"').replace('<openssl.h>', '"zsign_openssl.h"')
-              
-              # Phân luồng đường dẫn zip cực kỳ thông minh, không bao giờ bị Not Found nữa
+
+              # Cập nhật openssl
+              content = content.replace('<openssl.h>', '"zsign_openssl.hpp"').replace('"openssl.h"', '"zsign_openssl.hpp"')
+
+              # Phân luồng minizip chuẩn xác
               if '/common/' in filepath or '\\common\\' in filepath:
                   content = content.replace('<zip.h>', '"../minizip/zip.h"').replace('<unzip.h>', '"../minizip/unzip.h"')
               else:
                   content = content.replace('<zip.h>', '"minizip/zip.h"').replace('<unzip.h>', '"minizip/unzip.h"')
+
+              # Tự động thay thế các include "xxx.h" thành "xxx.hpp"
+              def replacer(match):
+                  inc_path = match.group(1)
+                  if os.path.basename(inc_path) in zsign_headers:
+                      return f'#include "{inc_path}.hpp"'
+                  return match.group(0)
               
-              # Khóa hàm system() gây lỗi
+              content = re.sub(r'#include\s+"([^"]+)\.h"', replacer, content)
+
+              # Cắt đứt hàm system() làm sập iOS
               if 'util.cpp' in filepath:
                   content = re.sub(r'int\s+status\s*=\s*system\(.*?\);', 'int status = 0;', content)
-                  
+
               with open(filepath, 'w', encoding='utf-8') as f: f.write(content)
-          
-          print("4. Cấp quyền Podspec nguyên tử...")
+
+          print("5. Bơm quyền Podspec...")
           for pod in glob.glob('modules/**/*.podspec', recursive=True):
               with open(pod, 'r') as f: lines = f.readlines()
               with open(pod, 'w') as f:
@@ -80,22 +104,9 @@ jobs:
           EOF
           python3 fix_all.py
           
-          echo "5. CÀI ĐẶT COCOAPODS..."
+          echo "6. CÀI ĐẶT COCOAPODS..."
           cd ios
           pod install
-          
-          echo "6. BỊT MẮT SWIFT (DIỆT TẬN GỐC LỖI UMBRELLA BẰNG PYTHON)..."
-          python3 -c "
-          import glob
-          # Danh sách tội đồ C++ khiến Swift bị mù chữ
-          bad_headers = ['archo.h', 'archive.h', 'base64.h', 'bundle.h', 'common.h', 'crypto.h', 'fs.h', 'json.h', 'log.h', 'macho.h', 'mman.h', 'md5.h', 'zsign_openssl.h', 'sha1.h', 'sha256.h', 'signing.h', 'sys.h', 'timer.h', 'util.h', 'zip.h', 'unzip.h', 'ioapi.h', 'crypt.h']
-          for u_file in glob.glob('Pods/**/IpaSigner-umbrella.h', recursive=True):
-              with open(u_file, 'r') as f: lines = f.readlines()
-              with open(u_file, 'w') as f:
-                  for line in lines:
-                      if any(bad in line for bad in bad_headers): continue
-                      f.write(line)
-          "
 
       - name: Xcode Build (Unsigned)
         run: |
