@@ -14,15 +14,12 @@ jobs:
         with:
           node-version: '18'
 
-      - name: ⚡ Bộ nhớ đệm (Bỏ qua thời gian tải)
+      - name: ⚡ Bộ nhớ đệm (Tăng tốc tải)
         uses: actions/cache@v4
         with:
-          path: |
-            node_modules
-            ios/Pods
-          key: ${{ runner.os }}-expo-build-${{ hashFiles('package-lock.json', 'ios/Podfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-expo-build-
+          path: node_modules
+          key: ${{ runner.os }}-expo-build-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-expo-build-
 
       - name: Cài đặt thư viện Node
         run: npm install
@@ -30,7 +27,7 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ BƯỚC 1 - DỌN DẸP VÀ CHUẨN BỊ (AN TOÀN TUYỆT ĐỐI)
+      - name: 🛠️ BƯỚC 1 - DỌN DẸP VÀ CHUẨN BỊ VŨ KHÍ
         run: |
           cd modules/ipa-signer/ios
           mkdir -p minizip
@@ -61,27 +58,16 @@ jobs:
           
           [ -f "util.cpp" ] && sed -i '' 's/int status = system(.*);/int status = 0;/g' util.cpp || true
 
-      - name: 🛠️ BƯỚC 2 - CẤP QUYỀN VÀ GIẤU C++ BẰNG PODSPEC
+      - name: 🛠️ BƯỚC 2 - CẤP QUYỀN PODSPEC
         run: |
           cat << 'EOF' > patch_podspec.py
           import glob
           for pod in glob.glob('modules/**/*.podspec', recursive=True):
               with open(pod, 'r') as f: c = f.read()
               if 'OpenSSL-Universal' not in c:
-                  injection = """
-            s.dependency 'OpenSSL-Universal'
-            s.libraries = 'z'
-            s.private_header_files = [
-              'ios/archo.h', 'ios/archive.h', 'ios/base64.h', 'ios/bundle.h', 
-              'ios/crypto.h', 'ios/fs.h', 'ios/macho.h', 'ios/mman.h', 'ios/md5.h', 
-              'ios/zsign_openssl.h', 'ios/sha1.h', 'ios/sha256.h', 'ios/signing.h', 
-              'ios/sys.h', 'ios/timer.h', 'ios/util.h', 
-              'ios/common/*.h', 'ios/minizip/*.h'
-            ]
-          """
                   idx = c.rfind('end')
                   if idx != -1:
-                      c = c[:idx] + injection + c[idx:]
+                      c = c[:idx] + "\n  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n" + c[idx:]
                       with open(pod, 'w') as f: f.write(c)
           EOF
           python3 patch_podspec.py
@@ -91,11 +77,39 @@ jobs:
           cd ios
           pod install
 
-      - name: 💣 BƯỚC 4 - BỊT MẮT SWIFT TUYỆT ĐỐI BẰNG PERL
+      - name: 💣 BƯỚC 4 - BỊT MẮT SWIFT TUYỆT ĐỐI BẰNG PYTHON (QUYẾT ĐỊNH)
         run: |
-          echo "Đang dọn dẹp Umbrella Header..."
-          find ios/Pods -type f -name "IpaSigner-umbrella.h" -exec perl -pi -e 's/.*#import.*(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|zsign_openssl|sha1|sha256|signing|sys|timer|util|zip|unzip|ioapi|crypt)\.h.*\n//g' {} + || true
-          echo "Thành công che mắt Swift!"
+          cat << 'EOF' > clean_umbrella.py
+          import os, glob
+
+          print("--- BẮT ĐẦU CHIẾN DỊCH BỊT MẮT SWIFT ---")
+          umbrella_files = glob.glob('ios/Pods/**/IpaSigner-umbrella.h', recursive=True)
+
+          if not umbrella_files:
+              print("Không tìm thấy Umbrella Header, có thể Apple đã tự fix.")
+
+          for u_file in umbrella_files:
+              print(f"Phát hiện danh sách: {u_file}")
+              with open(u_file, 'r') as f:
+                  lines = f.readlines()
+              
+              with open(u_file, 'w') as f:
+                  for line in lines:
+                      # Lọc các dòng import nội bộ của dự án
+                      if line.startswith('#import "') or line.startswith('#import <IpaSigner/'):
+                          # CHỈ GIỮ LẠI các file giao tiếp của React Native / Expo
+                          if 'IpaSignerModule' in line or 'IpaSignerView' in line or 'ZSignWrapper' in line or 'Expo' in line:
+                              f.write(line)
+                              print(f" [GIỮ AN TOÀN] {line.strip()}")
+                          else:
+                              # XÓA TOÀN BỘ CÁC FILE C++ KHỎI DANH SÁCH (Sát thủ giấu mặt)
+                              print(f" [XÓA BỎ C++] {line.strip()}")
+                      else:
+                          # Giữ nguyên các dòng hệ thống (Foundation, UIKit...)
+                          f.write(line)
+          print("--- CHIẾN DỊCH THÀNH CÔNG ---")
+          EOF
+          python3 clean_umbrella.py
 
       - name: Xcode Build (Unsigned)
         run: |
