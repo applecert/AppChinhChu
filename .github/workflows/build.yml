@@ -51,14 +51,28 @@ jobs:
           
           find . -type f -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0;/g' {} + || true
 
-          # --- VŨ KHÍ MỚI: GIẢI MÃ VÒNG LẶP C++ ZSignAsset ---
+          # --- VŨ KHÍ TỐI THƯỢNG: TIÊM KHÁNG THỂ VÀO C++ ---
           python3 -c "
           import os
+
+          # 1. Bổ sung thư viện nền tảng cho signing.h
+          if os.path.exists('signing.h'):
+              with open('signing.h', 'r') as file: c = file.read()
+              if '#include <stdint.h>' not in c:
+                  injection = \"\"\"#pragma once
+          #include <stdint.h>
+          #include <string>
+          #include <vector>
+          using namespace std;
+          \"\"\"
+                  with open('signing.h', 'w') as file: file.write(injection + c.replace('#pragma once', ''))
+
+          # 2. Giải quyết vòng lặp ZSignAsset
           for f in ['archo.h', 'macho.h', 'bundle.h']:
               if os.path.exists(f):
                   with open(f, 'r') as file: c = file.read()
                   if 'class ZSignAsset;' not in c:
-                      with open(f, 'w') as file: file.write('class ZSignAsset;\n' + c)
+                      with open(f, 'w') as file: file.write('#pragma once\nclass ZSignAsset;\n' + c.replace('#pragma once', ''))
           
           if os.path.exists('signing.cpp'):
               with open('signing.cpp', 'r') as file: c = file.read()
