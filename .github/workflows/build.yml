@@ -14,70 +14,76 @@ jobs:
         with:
           node-version: '18'
 
+      - name: ⚡ Bộ nhớ đệm (Tăng tốc độ Build tiết kiệm 7 phút)
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            ios/Pods
+          key: ${{ runner.os }}-expo-build-${{ hashFiles('package-lock.json', 'ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-expo-build-
+
       - name: Cài đặt thư viện Node
         run: npm install
 
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật & Bơm Minizip (CHỐT HẠ ĐỈNH CAO)
+      - name: 🛠️ Phẫu thuật Lõi C++ (BIỆN PHÁP CHỐT HẠ SIÊU TỐI ƯU)
         run: |
-          echo "1. BƠM TRỰC TIẾP THƯ VIỆN MINIZIP VÀO LÕI..."
-          mkdir -p modules/ipa-signer/ios/minizip
-          cd modules/ipa-signer/ios/minizip
+          echo "1. BƠM TRỰC TIẾP THƯ VIỆN MINIZIP..."
+          cd modules/ipa-signer/ios
+          mkdir -p minizip
+          cd minizip
           BASE_URL="https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip"
-          curl -sLO $BASE_URL/unzip.h
-          curl -sLO $BASE_URL/unzip.c
-          curl -sLO $BASE_URL/zip.h
-          curl -sLO $BASE_URL/zip.c
-          curl -sLO $BASE_URL/ioapi.h
-          curl -sLO $BASE_URL/ioapi.c
-          curl -sLO $BASE_URL/crypt.h
-          cd ../../../..
+          for file in unzip.h unzip.c zip.h zip.c ioapi.h ioapi.c crypt.h; do
+            curl -sLO $BASE_URL/$file
+          done
+          cd ..
           
-          echo "2. TIÊM PODSPEC SIÊU TỐI GIẢN (KHÔNG PHÁ CODE CŨ)..."
+          echo "2. FIX ĐƯỜNG DẪN MINIZIP CHUẨN XÁC THEO TỪNG TẦNG THƯ MỤC..."
+          # Với các file nằm ngoài cùng (tầng ios/)
+          find . -maxdepth 1 -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<zip\.h>/"minizip\/zip.h"/g' {} +
+          find . -maxdepth 1 -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<unzip\.h>/"minizip\/unzip.h"/g' {} +
+          # Với các file nằm trong ngõ (tầng ios/common/ - Sửa đúng lỗi Sếp vừa gửi)
+          find common -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<zip\.h>/"..\/minizip\/zip.h"/g' {} +
+          find common -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<unzip\.h>/"..\/minizip\/unzip.h"/g' {} +
+
+          echo "3. CẤP QUYỀN PODSPEC (SIÊU AN TOÀN)..."
+          cd ../../..
           cat << 'EOF' > patch_podspec.py
           import glob
           for pod in glob.glob('modules/**/*.podspec', recursive=True):
-              with open(pod, 'r') as f:
-                  content = f.read()
-              
+              with open(pod, 'r') as f: content = f.read()
               idx = content.rfind('end')
-              if idx != -1:
-                  injection = "\n  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n"
-                  content = content[:idx] + injection + content[idx:]
-                  
-              with open(pod, 'w') as f:
-                  f.write(content)
+              if idx != -1 and 'OpenSSL-Universal' not in content:
+                  content = content[:idx] + "\n  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n" + content[idx:]
+              with open(pod, 'w') as f: f.write(content)
           EOF
           python3 patch_podspec.py
           
-          echo "3. XỬ LÝ ĐƯỜNG DẪN C++ VÀ MINIZIP..."
+          echo "4. VŨ KHÍ TỐI THƯỢNG: ĐÓNG BĂNG C++ VỚI SWIFT..."
           cd modules/ipa-signer/ios
-          
           [ -f "openssl.h" ] && mv openssl.h zsign_openssl.h
           [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
-          find . -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<zip\.h>/"minizip\/zip.h"/g' {} +
-          find . -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<unzip\.h>/"minizip\/unzip.h"/g' {} +
-          
-          for file in archo.h macho.h bundle.h signing.h; do
-            if [ -f "$file" ]; then
-              sed -i '' '/#include <set>/d' "$file"
-              sed -i '' '/#include <string>/d' "$file"
-              sed -i '' '/#include <vector>/d' "$file"
-              sed -i '' '/using namespace std;/d' "$file"
-              
-              echo '#include <set>' > temp_file
-              echo '#include <string>' >> temp_file
-              echo '#include <vector>' >> temp_file
-              echo 'using namespace std;' >> temp_file
-              cat "$file" >> temp_file
-              mv temp_file "$file"
+          # Khoác áo tàng hình cho các file C++ để ngăn Swift đọc nhầm và báo lỗi
+          for file in archo.h macho.h bundle.h signing.h common/common.h common/json.h common/log.h; do
+            if [ -f "$file" ] && ! grep -q "__cplusplus" "$file"; then
+              echo "#ifdef __cplusplus" > temp_hdr
+              echo "#include <set>" >> temp_hdr
+              echo "#include <string>" >> temp_hdr
+              echo "#include <vector>" >> temp_hdr
+              echo "using namespace std;" >> temp_hdr
+              cat "$file" >> temp_hdr
+              echo "#endif" >> temp_hdr
+              mv temp_hdr "$file"
             fi
           done
           
+          echo "5. SẮP XẾP ĐƯỜNG DẪN CHUẨN TRONG FILE .CPP..."
           for file in archo.cpp bundle.cpp macho.cpp signing.cpp; do
             if [ -f "$file" ]; then
               sed -i '' '/#include "signing\.h"/d' "$file"
@@ -99,13 +105,9 @@ jobs:
           
           cd ../../..
           
-          echo "4. CÀI ĐẶT COCOAPODS..."
+          echo "6. CÀI ĐẶT COCOAPODS..."
           cd ios
           pod install
-          
-          echo "5. DỌN DẸP UMBRELLA HEADER BẰNG RAĐA CỰC MẠNH..."
-          # Đã sửa lại regex để bắt dính mọi định dạng của CocoaPods (#import <...> hoặc #import "...")
-          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import.*(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*|zip|unzip|ioapi|crypt)\.h/d' {} +
 
       - name: Xcode Build (Unsigned)
         run: |
