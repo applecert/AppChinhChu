@@ -30,9 +30,8 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ BƯỚC 1 - DỌN DẸP VÀ CHUẨN BỊ VŨ KHÍ
+      - name: 🛠️ BƯỚC 1 - DỌN DẸP VÀ CHUẨN BỊ (AN TOÀN TUYỆT ĐỐI)
         run: |
-          echo "Tải thư viện nén Minizip..."
           cd modules/ipa-signer/ios
           mkdir -p minizip
           cd minizip
@@ -45,10 +44,9 @@ jobs:
           curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/crypt.h || true
           cd ..
           
-          echo "Xử lý file rác và chống xung đột..."
           rm -f zsign.cpp || true
-          if [ -f "openssl.h" ]; then mv openssl.h zsign_openssl.h; fi
-          if [ -f "openssl.cpp" ]; then mv openssl.cpp zsign_openssl.cpp; fi
+          [ -f openssl.h ] && mv openssl.h zsign_openssl.h || true
+          [ -f openssl.cpp ] && mv openssl.cpp zsign_openssl.cpp || true
           
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} + || true
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/<openssl\.h>/"zsign_openssl.h"/g' {} + || true
@@ -61,18 +59,29 @@ jobs:
             find common -type f -exec sed -i '' 's/<unzip\.h>/"..\/minizip\/unzip.h"/g' {} + || true
           fi
           
-          if [ -f "util.cpp" ]; then sed -i '' 's/int status = system(.*);/int status = 0;/g' util.cpp; fi
+          [ -f "util.cpp" ] && sed -i '' 's/int status = system(.*);/int status = 0;/g' util.cpp || true
 
-      - name: 🛠️ BƯỚC 2 - CẤP QUYỀN PODSPEC
+      - name: 🛠️ BƯỚC 2 - CẤP QUYỀN VÀ GIẤU C++ BẰNG PODSPEC
         run: |
           cat << 'EOF' > patch_podspec.py
           import glob
           for pod in glob.glob('modules/**/*.podspec', recursive=True):
               with open(pod, 'r') as f: c = f.read()
               if 'OpenSSL-Universal' not in c:
+                  injection = """
+            s.dependency 'OpenSSL-Universal'
+            s.libraries = 'z'
+            s.private_header_files = [
+              'ios/archo.h', 'ios/archive.h', 'ios/base64.h', 'ios/bundle.h', 
+              'ios/crypto.h', 'ios/fs.h', 'ios/macho.h', 'ios/mman.h', 'ios/md5.h', 
+              'ios/zsign_openssl.h', 'ios/sha1.h', 'ios/sha256.h', 'ios/signing.h', 
+              'ios/sys.h', 'ios/timer.h', 'ios/util.h', 
+              'ios/common/*.h', 'ios/minizip/*.h'
+            ]
+          """
                   idx = c.rfind('end')
                   if idx != -1:
-                      c = c[:idx] + "\n  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n" + c[idx:]
+                      c = c[:idx] + injection + c[idx:]
                       with open(pod, 'w') as f: f.write(c)
           EOF
           python3 patch_podspec.py
@@ -82,18 +91,10 @@ jobs:
           cd ios
           pod install
 
-      - name: 💣 BƯỚC 4 - RÚT CỦI ĐÁY NỒI (SIÊU ĐỘT PHÁ)
+      - name: 💣 BƯỚC 4 - BỊT MẮT SWIFT TUYỆT ĐỐI BẰNG PERL
         run: |
-          echo "Đang tiêu diệt C++ khỏi thư mục Public..."
-          cd ios/Pods/Headers/Public/IpaSigner 2>/dev/null || true
-          
-          rm -f archo.h archive.h base64.h bundle.h common.h crypto.h fs.h json.h log.h macho.h mman.h md5.h zsign_openssl.h sha1.h sha256.h signing.h sys.h timer.h util.h zip.h unzip.h ioapi.h crypt.h || true
-          
-          echo "Đang sửa danh sách Umbrella..."
-          UMBRELLA="../../Target Support Files/IpaSigner/IpaSigner-umbrella.h"
-          if [ -f "$UMBRELLA" ]; then
-            sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl|zsign_openssl|sha1|sha256|signing|sys|timer|util|zip|unzip|ioapi|crypt)\.h"/d' "$UMBRELLA" || true
-          fi
+          echo "Đang dọn dẹp Umbrella Header..."
+          find ios/Pods -type f -name "IpaSigner-umbrella.h" -exec perl -pi -e 's/.*#import.*(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|zsign_openssl|sha1|sha256|signing|sys|timer|util|zip|unzip|ioapi|crypt)\.h.*\n//g' {} + || true
           echo "Thành công che mắt Swift!"
 
       - name: Xcode Build (Unsigned)
