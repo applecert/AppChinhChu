@@ -14,41 +14,59 @@ jobs:
         with:
           node-version: '18'
 
+      - name: ⚡ Bộ nhớ đệm (Bỏ qua thời gian tải)
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            ios/Pods
+          key: ${{ runner.os }}-expo-build-${{ hashFiles('package-lock.json', 'ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-expo-build-
+
       - name: Cài đặt thư viện Node
         run: npm install
 
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ BƯỚC 1 - DỌN DẸP VÀ CHUẨN BỊ VŨ KHÍ
+      - name: 🛠️ BƯỚC 1: DỌN DẸP VÀ CHUẨN BỊ VŨ KHÍ (BỌC THÉP)
         run: |
           echo "Tải thư viện nén Minizip..."
           cd modules/ipa-signer/ios
           mkdir -p minizip
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/unzip.h -o minizip/unzip.h
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/unzip.c -o minizip/unzip.c
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/zip.h -o minizip/zip.h
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/zip.c -o minizip/zip.c
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/ioapi.h -o minizip/ioapi.h
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/ioapi.c -o minizip/ioapi.c
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/crypt.h -o minizip/crypt.h
+          cd minizip
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/unzip.h || true
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/unzip.c || true
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/zip.h || true
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/zip.c || true
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/ioapi.h || true
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/ioapi.c || true
+          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/crypt.h || true
+          cd ..
 
           echo "Xử lý file rác và chống xung đột..."
-          rm -f zsign.cpp
-          [ -f openssl.h ] && mv openssl.h zsign_openssl.h
-          [ -f openssl.cpp ] && mv openssl.cpp zsign_openssl.cpp
+          rm -f zsign.cpp || true
+          
+          # Dùng if chuẩn mực để không bị sập exit code 1
+          if [ -f "openssl.h" ]; then mv openssl.h zsign_openssl.h; fi
+          if [ -f "openssl.cpp" ]; then mv openssl.cpp zsign_openssl.cpp; fi
 
-          find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
-          find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/<openssl\.h>/"zsign_openssl.h"/g' {} +
+          # Thêm || true vào mọi lệnh sed để cỗ máy luôn tiến về phía trước
+          find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} + || true
+          find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/<openssl\.h>/"zsign_openssl.h"/g' {} + || true
 
-          find . -maxdepth 1 -type f -exec sed -i '' 's/<zip\.h>/"minizip\/zip.h"/g' {} +
-          find . -maxdepth 1 -type f -exec sed -i '' 's/<unzip\.h>/"minizip\/unzip.h"/g' {} +
-          find common -type f -exec sed -i '' 's/<zip\.h>/"..\/minizip\/zip.h"/g' {} +
-          find common -type f -exec sed -i '' 's/<unzip\.h>/"..\/minizip\/unzip.h"/g' {} +
+          find . -maxdepth 1 -type f -exec sed -i '' 's/<zip\.h>/"minizip\/zip.h"/g' {} + || true
+          find . -maxdepth 1 -type f -exec sed -i '' 's/<unzip\.h>/"minizip\/unzip.h"/g' {} + || true
+          
+          if [ -d "common" ]; then
+            find common -type f -exec sed -i '' 's/<zip\.h>/"..\/minizip\/zip.h"/g' {} + || true
+            find common -type f -exec sed -i '' 's/<unzip\.h>/"..\/minizip\/unzip.h"/g' {} + || true
+          fi
 
-          [ -f "util.cpp" ] && sed -i '' 's/int status = system(.*);/int status = 0;/g' util.cpp
+          if [ -f "util.cpp" ]; then sed -i '' 's/int status = system(.*);/int status = 0;/g' util.cpp; fi
 
-      - name: 🛠️ BƯỚC 2 - CẤP QUYỀN PODSPEC
+      - name: 🛠️ BƯỚC 2: CẤP QUYỀN PODSPEC
         run: |
           python3 -c "
           import glob
@@ -59,22 +77,22 @@ jobs:
                   with open(pod, 'w') as f: f.write(c)
           "
 
-      - name: 🛠️ BƯỚC 3 - CÀI ĐẶT COCOAPODS
+      - name: 🛠️ BƯỚC 3: CÀI ĐẶT COCOAPODS
         run: |
           cd ios
           pod install
 
-      - name: 💣 BƯỚC 4 - RÚT CỦI ĐÁY NỒI (SIÊU ĐỘT PHÁ)
+      - name: 💣 BƯỚC 4: RÚT CỦI ĐÁY NỒI (SIÊU ĐỘT PHÁ)
         run: |
           echo "Đang tiêu diệt C++ khỏi thư mục Public..."
           cd ios/Pods/Headers/Public/IpaSigner 2>/dev/null || true
           
-          rm -f archo.h archive.h base64.h bundle.h common.h crypto.h fs.h json.h log.h macho.h mman.h md5.h zsign_openssl.h sha1.h sha256.h signing.h sys.h timer.h util.h zip.h unzip.h ioapi.h crypt.h
+          rm -f archo.h archive.h base64.h bundle.h common.h crypto.h fs.h json.h log.h macho.h mman.h md5.h zsign_openssl.h sha1.h sha256.h signing.h sys.h timer.h util.h zip.h unzip.h ioapi.h crypt.h || true
           
           echo "Đang sửa danh sách Umbrella..."
           UMBRELLA="../../Target Support Files/IpaSigner/IpaSigner-umbrella.h"
           if [ -f "$UMBRELLA" ]; then
-            sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl|zsign_openssl|sha1|sha256|signing|sys|timer|util|zip|unzip|ioapi|crypt)\.h"/d' "$UMBRELLA"
+            sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl|zsign_openssl|sha1|sha256|signing|sys|timer|util|zip|unzip|ioapi|crypt)\.h"/d' "$UMBRELLA" || true
           fi
           echo "Thành công che mắt Swift!"
 
