@@ -20,7 +20,7 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: 🛠️ Phẫu thuật & Bơm Minizip (SẠCH SẼ 100%)
+      - name: 🛠️ Phẫu thuật & Bơm Minizip (CHỐT HẠ ĐỈNH CAO)
         run: |
           echo "1. BƠM TRỰC TIẾP THƯ VIỆN MINIZIP VÀO LÕI..."
           mkdir -p modules/ipa-signer/ios/minizip
@@ -42,7 +42,6 @@ jobs:
               with open(pod, 'r') as f:
                   content = f.read()
               
-              # Chỉ tìm chữ 'end' cuối cùng của file và chèn vào ngay trước nó
               idx = content.rfind('end')
               if idx != -1:
                   injection = "\n  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n"
@@ -60,11 +59,9 @@ jobs:
           [ -f "openssl.cpp" ] && mv openssl.cpp zsign_openssl.cpp
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} +
           
-          # Đổi lệnh gọi zip cũ thành gọi trực tiếp vào thư mục minizip vừa tải
           find . -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<zip\.h>/"minizip\/zip.h"/g' {} +
           find . -type f \( -name "*.h" -o -name "*.cpp" \) -exec sed -i '' 's/<unzip\.h>/"minizip\/unzip.h"/g' {} +
           
-          # Bơm thư viện chuẩn C++ (Chữa lỗi unknown type)
           for file in archo.h macho.h bundle.h signing.h; do
             if [ -f "$file" ]; then
               sed -i '' '/#include <set>/d' "$file"
@@ -81,7 +78,6 @@ jobs:
             fi
           done
           
-          # Sắp xếp Include chuẩn xác
           for file in archo.cpp bundle.cpp macho.cpp signing.cpp; do
             if [ -f "$file" ]; then
               sed -i '' '/#include "signing\.h"/d' "$file"
@@ -107,8 +103,9 @@ jobs:
           cd ios
           pod install
           
-          echo "5. DỌN DẸP UMBRELLA HEADER..."
-          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import "(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*|zip|unzip|ioapi|crypt)\.h"/d' {} +
+          echo "5. DỌN DẸP UMBRELLA HEADER BẰNG RAĐA CỰC MẠNH..."
+          # Đã sửa lại regex để bắt dính mọi định dạng của CocoaPods (#import <...> hoặc #import "...")
+          find Pods -type f -name "IpaSigner-umbrella.h" -exec sed -i '' -E '/#import.*(archo|archive|base64|bundle|common|crypto|fs|json|log|macho|mman|md5|openssl.*|sha.*|signing|sys|timer|util.*|zsign.*|zip|unzip|ioapi|crypt)\.h/d' {} +
 
       - name: Xcode Build (Unsigned)
         run: |
