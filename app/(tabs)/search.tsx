@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, Image, TextInput, ScrollView, Dimensions, Keyboard, Animated, Platform } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, Image, TextInput, ScrollView, Dimensions, Keyboard, Animated, Platform, Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,20 +16,38 @@ export const ListDownloadBtn = ({ app }: { app: AppItem }) => {
   const handleDownload = async () => {
     setState('loading');
     try {
+      // 1. Dọn dẹp tên file cho an toàn
       const safeName = app.name.replace(/[^a-zA-Z0-9]/g, '_');
-      const fileUri = FileSystem.documentDirectory + safeName + '.ipa';
+      
+      // 2. CHỈ ĐỊNH ĐÚNG VÀO THƯ MỤC "IPAVIET_Data/" MÀ APPLE ĐÃ CẤP QUYỀN
+      const targetDir = FileSystem.documentDirectory + 'IPAVIET_Data/';
+      const fileUri = targetDir + safeName + '.ipa';
+
+      // 3. Kiểm tra xem thư mục có tồn tại không, nếu chưa thì tạo (Phòng hờ trường hợp Sếp chưa mở tab Sign)
+      const dirInfo = await FileSystem.getInfoAsync(targetDir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true });
+      }
+
+      // 4. Bắt đầu tải thẳng vào Kho
       const dl = FileSystem.createDownloadResumable(app.ipaUrl, fileUri, {}, (p) => {
         setProg(p.totalBytesWritten / p.totalBytesExpectedToWrite);
       });
+      
       await dl.downloadAsync();
+      
+      // Xong xuôi thì báo Done để chuyển sang nút MỞ
       setState('done');
-    } catch(e) { setState('idle'); }
+    } catch(e) { 
+      setState('idle'); 
+      Alert.alert("Lỗi tải file", "Không thể lưu file vào thiết bị, vui lòng thử lại.");
+    }
   };
 
   if (state === 'done') {
     return (
       <TouchableOpacity style={styles.getButton} onPress={() => router.push('/sign')}>
-        <Text style={styles.getButtonText}>MỞ</Text>
+        <Text style={styles.getButtonText}>MỞ KHO</Text>
       </TouchableOpacity>
     );
   }
