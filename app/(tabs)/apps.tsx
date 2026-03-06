@@ -5,11 +5,9 @@ import { useRouter } from 'expo-router';
 import { fetchRegularApps, AppItem } from '../../constants/data';
 import { ListDownloadBtn } from './search';
 
-// Nhập thêm bộ Firebase để làm tường lửa
 import { auth, db } from '../../firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
 
-// HÀM ĐỌC THỜI GIAN VIP CHUẨN (Tương tự như bên file VIP)
 const getVipMillis = (vipExpire: any) => {
   if (!vipExpire) return 0;
   if (typeof vipExpire.toMillis === 'function') return vipExpire.toMillis();
@@ -17,13 +15,10 @@ const getVipMillis = (vipExpire: any) => {
   return Number(vipExpire) || 0;
 };
 
-// 1. GIAO DIỆN HÀNG ỨNG DỤNG ĐÃ ĐƯỢC CẤY TƯỜNG LỬA
 const RegularAppRow = memo(({ item }: { item: AppItem }) => {
   const router = useRouter();
 
-  // HÀM CHẶN NÚT TẢI
   const handleDownloadClick = async () => {
-    // 1. Chưa đăng nhập -> Đá ra chỗ đăng nhập
     if (!auth.currentUser) {
       return Alert.alert('Yêu cầu Đăng nhập', 'Sếp cần đăng nhập tài khoản trước nhé!', [
         { text: 'Hủy', style: 'cancel' },
@@ -31,20 +26,16 @@ const RegularAppRow = memo(({ item }: { item: AppItem }) => {
       ]);
     }
 
-    // 2. Đã đăng nhập -> Check thời hạn VIP trong Database
     try {
       const snap = await getDoc(doc(db, 'users', auth.currentUser.uid));
       if (snap.exists()) {
         const expireMillis = getVipMillis(snap.data().vipExpire);
-        
-        // Nếu VIP còn hạn -> Cho qua thẳng trang chi tiết để tải
         if (expireMillis > Date.now()) {
           router.push(`/details/${item.id}`);
           return;
         }
       }
       
-      // 3. Nếu không có VIP hoặc đã hết hạn -> Bật khiên chặn lại!
       Alert.alert(
         'Đặc Quyền VIP', 
         'Để tải ứng dụng siêu mượt không quảng cáo trên App, Sếp vui lòng nâng cấp gói VIP nhé!', 
@@ -60,21 +51,15 @@ const RegularAppRow = memo(({ item }: { item: AppItem }) => {
 
   return (
     <View>
-      {/* Vẫn cho phép Bấm vào thân App để xem Chi tiết bình thường */}
       <TouchableOpacity style={styles.appRow} activeOpacity={0.7} onPress={() => router.push(`/details/${item.id}`)}>
         <Image source={{ uri: item.iconUrl }} style={styles.appIconSmall} />
         <View style={styles.appInfo}>
           <Text style={styles.appName} numberOfLines={1}>{item.name}</Text>
-          <Text style={styles.appSub}>{item.sub}</Text>
+          <Text style={styles.appSub}>{item.category || item.sub}</Text>
         </View>
-        
-        {/* NHƯNG KHI BẤM VÀO NÚT TẢI THÌ BỊ CHẶN LẠI BỞI HÀM handleDownloadClick */}
         <TouchableOpacity activeOpacity={0.8} onPress={handleDownloadClick} style={{zIndex: 10}}>
-          <View pointerEvents="none">
-             <ListDownloadBtn app={item} />
-          </View>
+          <View pointerEvents="none"><ListDownloadBtn app={item} /></View>
         </TouchableOpacity>
-
       </TouchableOpacity>
       <View style={styles.divider} />
     </View>
@@ -85,7 +70,6 @@ export default function AppsScreen() {
   const [apps, setApps] = useState<AppItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<string[]>(['Tất cả']);
-  
   const [uiCat, setUiCat] = useState('Tất cả');
   const [listCat, setListCat] = useState('Tất cả');
 
@@ -96,7 +80,7 @@ export default function AppsScreen() {
   useEffect(() => {
     fetchRegularApps().then((data) => {
       setApps(data);
-      const uniqueCats = Array.from(new Set(data.map(app => app.category))).filter(c => c !== 'Khác');
+      const uniqueCats = Array.from(new Set(data.map(app => app.category))).filter(c => c && c !== 'Khác');
       setCategories(['Tất cả', ...uniqueCats]);
       setLoading(false);
     });
@@ -114,14 +98,15 @@ export default function AppsScreen() {
     InteractionManager.runAfterInteractions(() => { setListCat(cat); });
   };
 
-  const filteredApps = listCat === 'Tất cả' ? apps : apps.filter(a => a.category === listCat);
+  // 🔴 SỬA BỘ LỌC CHUẨN XÁC THEO THỂ LOẠI
+  const filteredApps = listCat === 'Tất cả' 
+    ? apps 
+    : apps.filter(a => a.category && a.category.trim().toLowerCase() === listCat.trim().toLowerCase());
 
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
-      <View style={styles.header}>
-        <Text style={styles.largeTitle}>Kho Ứng Dụng</Text>
-      </View>
+      <View style={styles.header}><Text style={styles.largeTitle}>Kho Ứng Dụng</Text></View>
 
       {loading ? (
         <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#0A84FF" /></View>
@@ -172,15 +157,12 @@ const styles = StyleSheet.create({
   scrollContent: { paddingTop: 10, paddingBottom: 120 },
   header: { paddingTop: 60, paddingHorizontal: 20, marginBottom: 5 },
   largeTitle: { color: '#FFFFFF', fontSize: 34, fontWeight: '700' },
-  
   categoryContainer: { borderBottomWidth: 0.5, borderBottomColor: '#38383A', paddingBottom: 15, marginBottom: 5, marginTop: 10 },
   catScroll: { paddingHorizontal: 20 },
-  
   slidingPill: { position: 'absolute', top: 0, bottom: 0, backgroundColor: '#0A84FF', borderRadius: 20 },
   catBtn: { paddingHorizontal: 20, paddingVertical: 10, zIndex: 2, justifyContent: 'center' },
   catText: { color: '#8E8E93', fontSize: 16, fontWeight: '600' },
   catTextActive: { color: '#FFFFFF', fontWeight: '700' },
-  
   loadingContainer: { alignItems: 'center', marginTop: 100 },
   appRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20 },
   appIconSmall: { width: 64, height: 64, borderRadius: 14, backgroundColor: '#1C1C1E', borderWidth: 0.5, borderColor: '#333' },
