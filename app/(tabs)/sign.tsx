@@ -30,18 +30,13 @@ export default function SignScreen() {
   const [tempZipData, setTempZipData] = useState<any>(null);
   const [certPassword, setCertPassword] = useState('');
   const [isUnzipping, setIsUnzipping] = useState(false);
-  
-  // 🔴 Ổ KHÓA CHỐNG KẸT DOCUMENT PICKER
   const [isPicking, setIsPicking] = useState(false);
 
-  // 🔴 ÉP APPLE HIỆN QUYỀN TRUY CẬP TÀI LIỆU
+  // 🔴 MẸO ÉP APPLE HIỆN QUYỀN: Lưu 1 file ảo ẩn danh vào thẳng thư mục gốc
   const forceIOSFolderCreation = async () => {
     try {
-      const initDir = FileSystem.documentDirectory + 'IPAVIET_Data/';
-      const dirInfo = await FileSystem.getInfoAsync(initDir);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(initDir, { intermediates: true });
-      }
+      const dummyFile = FileSystem.documentDirectory + '.khoitao.txt';
+      await FileSystem.writeAsStringAsync(dummyFile, 'Hệ thống khởi tạo thư mục');
     } catch (e) {}
   };
 
@@ -57,6 +52,8 @@ export default function SignScreen() {
       const dir = FileSystem.documentDirectory;
       if (!dir) return;
       const files = await FileSystem.readDirectoryAsync(dir);
+      
+      // Chỉ lấy file .ipa
       const ipaFiles = files.filter(f => f.endsWith('.ipa') && !f.startsWith('signed_')); 
       const signedFiles = files.filter(f => f.startsWith('signed_') && f.endsWith('.ipa')); 
 
@@ -81,7 +78,6 @@ export default function SignScreen() {
     Alert.alert("Xóa File", `Xóa file ${name}?`, [ { text: "Hủy", style: "cancel" }, { text: "Xóa", style: "destructive", onPress: async () => { await FileSystem.deleteAsync(uri); loadDownloadedFiles(); } } ]);
   };
 
-  // 🔴 HÀM IMPORT IPA (ĐÃ BỌC THÉP CHỐNG LỖI PICKER)
   const importIpaFile = async () => {
     if (isPicking) return;
     setIsPicking(true);
@@ -95,8 +91,8 @@ export default function SignScreen() {
       }
 
       setLoading(true);
-      const dir = FileSystem.documentDirectory;
-      const newUri = dir + file.name.replace(/\s+/g, '_'); // Fix lỗi khoảng trắng trong tên file
+      // 🔴 SỬA LỖI PICK FILE: Chạy thẳng ra gốc
+      const newUri = FileSystem.documentDirectory + file.name.replace(/\s+/g, '_'); 
 
       await FileSystem.copyAsync({ from: file.uri, to: newUri });
       Alert.alert("Thành công", "Đã thêm file IPA vào danh sách!");
@@ -116,7 +112,6 @@ export default function SignScreen() {
     } catch (error) {}
   };
 
-  // 🔴 HÀM ĐỌC ZIP CHỨNG CHỈ (SIÊU CẤP CỨU)
   const importCertFromZip = async () => {
     if (isPicking) return;
     setIsPicking(true);
@@ -164,6 +159,7 @@ export default function SignScreen() {
     
     setPwdModalVisible(false);
     try {
+      // 🔴 SỬA LỖI NẠP CHỨNG CHỈ: Lưu thư mục Certs ở gốc
       const certDir = FileSystem.documentDirectory + 'Certs/';
       const dirInfo = await FileSystem.getInfoAsync(certDir);
       if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(certDir, { intermediates: true });
