@@ -30,13 +30,12 @@ export default function SignScreen() {
   const [tempZipData, setTempZipData] = useState<any>(null);
   const [certPassword, setCertPassword] = useState('');
   const [isUnzipping, setIsUnzipping] = useState(false);
-  const [isPicking, setIsPicking] = useState(false);
 
-  // 🔴 MẸO ÉP APPLE HIỆN QUYỀN: Lưu 1 file ảo ẩn danh vào thẳng thư mục gốc
+  // 1. ÉP APPLE HIỆN THƯ MỤC: Tạo một file hiển thị rõ ràng
   const forceIOSFolderCreation = async () => {
     try {
-      const dummyFile = FileSystem.documentDirectory + '.khoitao.txt';
-      await FileSystem.writeAsStringAsync(dummyFile, 'Hệ thống khởi tạo thư mục');
+      const dummyFile = FileSystem.documentDirectory + 'HuongDan_IPA.txt';
+      await FileSystem.writeAsStringAsync(dummyFile, 'Thư mục này dùng để lưu trữ file IPA của bạn.');
     } catch (e) {}
   };
 
@@ -53,7 +52,6 @@ export default function SignScreen() {
       if (!dir) return;
       const files = await FileSystem.readDirectoryAsync(dir);
       
-      // Chỉ lấy file .ipa
       const ipaFiles = files.filter(f => f.endsWith('.ipa') && !f.startsWith('signed_')); 
       const signedFiles = files.filter(f => f.startsWith('signed_') && f.endsWith('.ipa')); 
 
@@ -78,31 +76,36 @@ export default function SignScreen() {
     Alert.alert("Xóa File", `Xóa file ${name}?`, [ { text: "Hủy", style: "cancel" }, { text: "Xóa", style: "destructive", onPress: async () => { await FileSystem.deleteAsync(uri); loadDownloadedFiles(); } } ]);
   };
 
-  const importIpaFile = async () => {
-    if (isPicking) return;
-    setIsPicking(true);
-    try {
-      const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
-      
-      const file = result.assets[0];
-      if (!file.name.toLowerCase().endsWith('.ipa')) {
-        return Alert.alert("Lỗi", "Vui lòng chọn file có đuôi .ipa");
+  // ==============================================
+  // 2. GIẢI QUYẾT TRIỆT ĐỂ LỖI ĐƠ NÚT TẢI FILE
+  // ==============================================
+  const importIpaFile = () => {
+    // PHẢI đóng Modal Menu TRƯỚC khi gọi DocumentPicker
+    setMenuVisible(false);
+    
+    // Chờ 0.5s để iOS dọn dẹp sạch sẽ hiệu ứng đóng Modal, rồi mới mở Tệp
+    setTimeout(async () => {
+      try {
+        const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+        if (result.canceled || !result.assets || result.assets.length === 0) return;
+        
+        const file = result.assets[0];
+        if (!file.name.toLowerCase().endsWith('.ipa')) {
+          return Alert.alert("Lỗi", "Vui lòng chọn file có đuôi .ipa");
+        }
+
+        setLoading(true);
+        const newUri = FileSystem.documentDirectory + file.name.replace(/\s+/g, '_'); 
+        await FileSystem.copyAsync({ from: file.uri, to: newUri });
+        
+        Alert.alert("Thành công", "Đã thêm file IPA vào kho!");
+        loadDownloadedFiles();
+      } catch (error: any) {
+        Alert.alert("Lỗi", "Không thể lấy file, vui lòng thử lại.");
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(true);
-      // 🔴 SỬA LỖI PICK FILE: Chạy thẳng ra gốc
-      const newUri = FileSystem.documentDirectory + file.name.replace(/\s+/g, '_'); 
-
-      await FileSystem.copyAsync({ from: file.uri, to: newUri });
-      Alert.alert("Thành công", "Đã thêm file IPA vào danh sách!");
-      loadDownloadedFiles();
-    } catch (error: any) {
-      Alert.alert("Lỗi", "Vui lòng vuốt tắt App và mở lại nếu bị kẹt chọn file.");
-    } finally {
-      setIsPicking(false);
-      setLoading(false);
-    }
+    }, 500); 
   };
 
   const loadSavedCerts = async () => {
@@ -112,46 +115,65 @@ export default function SignScreen() {
     } catch (error) {}
   };
 
-  const importCertFromZip = async () => {
-    if (isPicking) return;
-    setIsPicking(true);
-    try {
-      const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
-      if (result.canceled || !result.assets || result.assets.length === 0) return;
-      
-      const file = result.assets[0];
-      if (!file.name.toLowerCase().endsWith('.zip')) return Alert.alert("Lỗi", "Vui lòng chọn tệp .zip chứa chứng chỉ.");
-
-      setIsUnzipping(true);
-      
-      const b64Data = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
-      const zip = await JSZip.loadAsync(b64Data, { base64: true });
-
-      let p12Data = null, provData = null, p12Name = '', provName = '';
-
-      for (const [path, zipObj] of Object.entries(zip.files)) {
-        if (!zipObj.dir) {
-          if (path.toLowerCase().endsWith('.p12')) { p12Data = await zipObj.async('base64'); p12Name = path.split('/').pop() || 'cert.p12'; }
-          if (path.toLowerCase().endsWith('.mobileprovision')) { provData = await zipObj.async('base64'); provName = path.split('/').pop() || 'cert.mobileprovision'; }
+  // ==============================================
+  // 3. GIẢI QUYẾT TRIỆT ĐỂ LỖI ĐƠ NÚT CHỨNG CHỈ
+  // ==============================================
+  const importCertFromZip = () => {
+    // PHẢI đóng Modal Sign TRƯỚC khi gọi DocumentPicker
+    setSignModalVisible(false);
+    
+    setTimeout(async () => {
+      try {
+        const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+        
+        // Nếu người dùng ấn Hủy (Cancel), thì mở lại bảng Sign cho họ
+        if (result.canceled || !result.assets || result.assets.length === 0) {
+          setSignModalVisible(true);
+          return;
         }
-      }
+        
+        const file = result.assets[0];
+        if (!file.name.toLowerCase().endsWith('.zip')) {
+          Alert.alert("Lỗi", "Vui lòng chọn tệp .zip chứa chứng chỉ.");
+          setSignModalVisible(true);
+          return;
+        }
 
-      if (!p12Data || !provData) {
+        setIsUnzipping(true);
+        setSignModalVisible(true); // Bật lại bảng Sign để hiện loading xoay xoay
+        
+        const b64Data = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
+        const zip = await JSZip.loadAsync(b64Data, { base64: true });
+
+        let p12Data = null, provData = null, p12Name = '', provName = '';
+
+        for (const [path, zipObj] of Object.entries(zip.files)) {
+          if (!zipObj.dir) {
+            if (path.toLowerCase().endsWith('.p12')) { p12Data = await zipObj.async('base64'); p12Name = path.split('/').pop() || 'cert.p12'; }
+            if (path.toLowerCase().endsWith('.mobileprovision')) { provData = await zipObj.async('base64'); provName = path.split('/').pop() || 'cert.mobileprovision'; }
+          }
+        }
+
+        if (!p12Data || !provData) {
+          setIsUnzipping(false);
+          Alert.alert('Lỗi ZIP', 'Tệp ZIP không hợp lệ. Bên trong phải chứa ít nhất 1 file .p12 và 1 file .mobileprovision');
+          return;
+        }
+
+        setTempZipData({ p12Data, provData, p12Name, provName, zipName: file.name.replace('.zip', '') });
+        setCertPassword('');
         setIsUnzipping(false);
-        return Alert.alert('Lỗi ZIP', 'Tệp ZIP không hợp lệ. Bên trong phải chứa ít nhất 1 file .p12 và 1 file .mobileprovision');
+        setSignModalVisible(false); // Tắt bảng Sign để chuyển sang bảng Nhập Pass
+        
+        // Chờ bảng Sign tắt hẳn rồi mới mở bảng Pass
+        setTimeout(() => setPwdModalVisible(true), 500);
+
+      } catch (error: any) {
+        setIsUnzipping(false);
+        setSignModalVisible(true);
+        Alert.alert("Lỗi", "Không thể đọc file ZIP.");
       }
-
-      setTempZipData({ p12Data, provData, p12Name, provName, zipName: file.name.replace('.zip', '') });
-      setCertPassword('');
-      setIsUnzipping(false);
-      setPwdModalVisible(true);
-
-    } catch (error: any) {
-      setIsUnzipping(false);
-      Alert.alert("Lỗi Hệ Thống", "Hãy vuốt tắt App và mở lại. Lỗi đọc file bị kẹt.");
-    } finally {
-      setIsPicking(false);
-    }
+    }, 500);
   };
 
   const saveCertToStorage = async () => {
@@ -159,7 +181,6 @@ export default function SignScreen() {
     
     setPwdModalVisible(false);
     try {
-      // 🔴 SỬA LỖI NẠP CHỨNG CHỈ: Lưu thư mục Certs ở gốc
       const certDir = FileSystem.documentDirectory + 'Certs/';
       const dirInfo = await FileSystem.getInfoAsync(certDir);
       if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(certDir, { intermediates: true });
@@ -177,9 +198,14 @@ export default function SignScreen() {
       setSavedCerts(updatedCerts);
       await AsyncStorage.setItem('@saved_certs', JSON.stringify(updatedCerts));
       setSelectedCert(newCert); 
-      Alert.alert("Thành công", "Chứng chỉ đã được nạp vào hệ thống!");
+      
+      setTimeout(() => {
+        setSignModalVisible(true); // Mở lại bảng Sign sau khi lưu xong pass
+        Alert.alert("Thành công", "Chứng chỉ đã được nạp!");
+      }, 500);
+      
     } catch (error) {
-      Alert.alert("Lỗi", "Không thể lưu chứng chỉ vào máy. Có thể do thiết bị từ chối quyền ghi.");
+      Alert.alert("Lỗi", "Không thể lưu chứng chỉ vào máy.");
     }
   };
 
@@ -252,15 +278,16 @@ export default function SignScreen() {
           <FlatList data={localFiles} keyExtractor={(item) => item.uri} renderItem={renderItem} contentContainerStyle={styles.listContent} /> 
       )}
 
+      {/* MODAL MENU 3 CHẤM */}
       <Modal visible={menuVisible} transparent animationType="fade">
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
           <View style={styles.menuBox}>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); importIpaFile(); }}>
+            <TouchableOpacity style={styles.menuItem} onPress={importIpaFile}>
               <PlusCircle color="#0A84FF" size={22} />
               <Text style={styles.menuText}>Thêm File IPA</Text>
             </TouchableOpacity>
             <View style={{height: 1, backgroundColor: '#333'}} />
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); setSelectedIpa(null); setSignModalVisible(true); }}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); setSelectedIpa(null); setTimeout(() => setSignModalVisible(true), 300); }}>
               <FileKey color="#FFD700" size={22} />
               <Text style={styles.menuText}>Quản Lý Chứng Chỉ</Text>
             </TouchableOpacity>
@@ -268,6 +295,7 @@ export default function SignScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* MODAL KÝ APP & CHỨNG CHỈ */}
       <Modal visible={signModalVisible} transparent animationType="slide">
         <View style={styles.modalBg}>
           <View style={styles.modalBox}>
@@ -278,9 +306,9 @@ export default function SignScreen() {
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 20, paddingTop: 10}}>
               
-              <TouchableOpacity style={styles.addCertBtn} onPress={importCertFromZip} disabled={isUnzipping || isPicking}>
+              <TouchableOpacity style={styles.addCertBtn} onPress={importCertFromZip} disabled={isUnzipping}>
                  {isUnzipping ? <ActivityIndicator color="#0A84FF" /> : <PlusCircle color="#0A84FF" size={24} />}
-                 <Text style={styles.addCertText}>{isUnzipping ? 'Đang giải nén ZIP...' : 'Nhập tệp Chứng chỉ (.zip)'}</Text>
+                 <Text style={styles.addCertText}>{isUnzipping ? 'Đang tải Tệp...' : 'Nhập tệp Chứng chỉ (.zip)'}</Text>
               </TouchableOpacity>
 
               {savedCerts.length === 0 && <Text style={{color: '#555', textAlign: 'center', marginTop: 20}}>Chưa có chứng chỉ nào được lưu.</Text>}
@@ -317,6 +345,7 @@ export default function SignScreen() {
         </View>
       </Modal>
 
+      {/* MODAL MẬT KHẨU */}
       <Modal visible={pwdModalVisible} transparent animationType="fade">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBgCentered}>
           <View style={styles.pwdBox}>
@@ -325,7 +354,7 @@ export default function SignScreen() {
              <Text style={styles.pwdSub}>Nhập mật khẩu cho tệp {tempZipData?.zipName}</Text>
              <TextInput style={styles.pwdInput} placeholder="Mật khẩu file P12..." placeholderTextColor="#555" secureTextEntry value={certPassword} onChangeText={setCertPassword} autoFocus />
              <View style={{flexDirection: 'row', gap: 10, marginTop: 20}}>
-               <TouchableOpacity style={styles.pwdBtnCancel} onPress={() => setPwdModalVisible(false)}><Text style={{color: '#FFF', fontWeight: 'bold'}}>HỦY BỎ</Text></TouchableOpacity>
+               <TouchableOpacity style={styles.pwdBtnCancel} onPress={() => { setPwdModalVisible(false); setTimeout(() => setSignModalVisible(true), 500); }}><Text style={{color: '#FFF', fontWeight: 'bold'}}>HỦY BỎ</Text></TouchableOpacity>
                <TouchableOpacity style={styles.pwdBtnSave} onPress={saveCertToStorage}><Text style={{color: '#000', fontWeight: '900'}}>LƯU VÀO KHO</Text></TouchableOpacity>
              </View>
           </View>
