@@ -20,19 +20,19 @@ jobs:
       - name: Expo Prebuild
         run: npx expo prebuild -p ios --clean
 
-      - name: Step 1 - The Ultimate Python Fix (Xu ly C++ & Minizip tuyet doi)
+      - name: Step 1 - The Ultimate Python Fix
         run: |
           python3 -c "
           import os, urllib.request, glob, re
 
-          print('1. Tải Minizip chuẩn từ zlib...')
+          print('1. Tải Minizip bản 1.2.11 (Tuyệt đối không có lỗi skipset.h)...')
           ios_dir = 'modules/ipa-signer/ios'
           minizip_dir = os.path.join(ios_dir, 'minizip')
           os.makedirs(minizip_dir, exist_ok=True)
-          base_url = 'https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/'
+          base_url = 'https://raw.githubusercontent.com/madler/zlib/v1.2.11/contrib/minizip/'
           for f in ['unzip.h', 'unzip.c', 'zip.h', 'zip.c', 'ioapi.h', 'ioapi.c', 'crypt.h']:
               try: urllib.request.urlretrieve(base_url + f, os.path.join(minizip_dir, f))
-              except: pass
+              except Exception as e: print(f'Loi tai {f}: {e}')
 
           print('2. Dọn rác CLI và đổi tên OpenSSL...')
           if os.path.exists(os.path.join(ios_dir, 'openssl.h')): os.rename(os.path.join(ios_dir, 'openssl.h'), os.path.join(ios_dir, 'zsign_openssl.h'))
@@ -41,39 +41,44 @@ jobs:
 
           print('3. Nắn lại đường dẫn và tiêm kháng thể C++...')
           for root, dirs, files in os.walk(ios_dir):
-              if 'minizip' in root: continue  # Bỏ qua thư mục minizip, không đụng tới
+              if 'minizip' in root: continue
               for file in files:
                   if not file.endswith(('.h', '.cpp', '.c', '.m', '.mm')): continue
                   filepath = os.path.join(root, file)
                   with open(filepath, 'r', encoding='utf-8', errors='ignore') as f: content = f.read()
                   
                   new_content = content
-                  # Sửa lỗi OpenSSL
-                  new_content = new_content.replace('<openssl.h>', '\"zsign_openssl.h\"').replace('\"openssl.h\"', '\"zsign_openssl.h\"')
                   
-                  # Sửa lỗi mù đường dẫn Minizip
+                  # Fix OpenSSL
+                  for old in ['<openssl.h>', '\"openssl.h\"']:
+                      new_content = new_content.replace(old, '\"zsign_openssl.h\"')
+                  
+                  # Fix đường dẫn Minizip mù mịt
                   if 'common' in root:
-                      new_content = new_content.replace('<zip.h>', '\"../minizip/zip.h\"').replace('\"zip.h\"', '\"../minizip/zip.h\"').replace('<minizip/zip.h>', '\"../minizip/zip.h\"')
-                      new_content = new_content.replace('<unzip.h>', '\"../minizip/unzip.h\"').replace('\"unzip.h\"', '\"../minizip/unzip.h\"').replace('<minizip/unzip.h>', '\"../minizip/unzip.h\"')
+                      for old in ['<zip.h>', '\"zip.h\"', '<minizip/zip.h>', '\"minizip/zip.h\"']:
+                          new_content = new_content.replace(old, '\"../minizip/zip.h\"')
+                      for old in ['<unzip.h>', '\"unzip.h\"', '<minizip/unzip.h>', '\"minizip/unzip.h\"']:
+                          new_content = new_content.replace(old, '\"../minizip/unzip.h\"')
                   else:
-                      new_content = new_content.replace('<zip.h>', '\"minizip/zip.h\"').replace('\"zip.h\"', '\"minizip/zip.h\"').replace('<minizip/zip.h>', '\"minizip/zip.h\"')
-                      new_content = new_content.replace('<unzip.h>', '\"minizip/unzip.h\"').replace('\"unzip.h\"', '\"minizip/unzip.h\"').replace('<minizip/unzip.h>', '\"minizip/unzip.h\"')
+                      for old in ['<zip.h>', '\"zip.h\"', '<minizip/zip.h>', '\"minizip/zip.h\"']:
+                          new_content = new_content.replace(old, '\"minizip/zip.h\"')
+                      for old in ['<unzip.h>', '\"unzip.h\"', '<minizip/unzip.h>', '\"minizip/unzip.h\"']:
+                          new_content = new_content.replace(old, '\"minizip/unzip.h\"')
 
-                  # Khóa hàm system() gây cấm trên iOS
+                  # Vô hiệu hóa lệnh system cấm trên iOS
                   if file == 'util.cpp':
                       new_content = re.sub(r'int\s+status\s*=\s*system\(.*?\);', 'int status = 0;', new_content)
                   
-                  # Chữa lỗi thiếu thư viện nền tảng
+                  # Bơm thư viện nền tảng cho signing
                   if file == 'signing.h':
                       if '#include <stdint.h>' not in new_content:
                           new_content = '#pragma once\n#include <stdint.h>\n#include <string>\n#include <vector>\nusing namespace std;\n' + new_content.replace('#pragma once', '')
                   
-                  # Chữa lỗi vòng lặp ZSignAsset
+                  # Giải mã vòng lặp C++
                   if file in ['archo.h', 'macho.h', 'bundle.h']:
                       if 'class ZSignAsset;' not in new_content:
                           new_content = '#pragma once\nclass ZSignAsset;\n' + new_content.replace('#pragma once', '')
                   
-                  # Chữa lỗi cô lập file signing.h
                   if file == 'signing.cpp':
                       if '#include \"signing.h\"' not in new_content:
                           new_content = '#include \"signing.h\"\n' + new_content
@@ -99,7 +104,7 @@ jobs:
       - name: Step 3 - Bịt mắt Swift (Clean Umbrella)
         run: |
           python3 -c "
-          import os, glob
+          import glob
           print('--- BAT DAU DON DEP UMBRELLA ---')
           for u_file in glob.glob('ios/Pods/**/IpaSigner-umbrella.h', recursive=True):
               with open(u_file, 'r') as f: lines = f.readlines()
