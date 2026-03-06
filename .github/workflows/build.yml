@@ -23,17 +23,8 @@ jobs:
       - name: Step 1 - Don Dep Va Chuan Bi
         run: |
           cd modules/ipa-signer/ios
-          mkdir -p minizip
-          cd minizip
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/unzip.h || true
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/unzip.c || true
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/zip.h || true
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/zip.c || true
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/ioapi.h || true
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/ioapi.c || true
-          curl -sLO https://raw.githubusercontent.com/madler/zlib/master/contrib/minizip/crypt.h || true
-          cd ..
           
+          # Dọn dẹp rác C++
           rm -f zsign.cpp || true
           [ -f openssl.h ] && mv openssl.h zsign_openssl.h || true
           [ -f openssl.cpp ] && mv openssl.cpp zsign_openssl.cpp || true
@@ -41,33 +32,24 @@ jobs:
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/"openssl\.h"/"zsign_openssl.h"/g' {} + || true
           find . -type f \( -name "*.h" -o -name "*.cpp" -o -name "*.mm" \) -exec sed -i '' 's/<openssl\.h>/"zsign_openssl.h"/g' {} + || true
           
-          find . -maxdepth 1 -type f -exec sed -i '' 's/<zip\.h>/"minizip\/zip.h"/g' {} + || true
-          find . -maxdepth 1 -type f -exec sed -i '' 's/<unzip\.h>/"minizip\/unzip.h"/g' {} + || true
-          
-          if [ -d "common" ]; then
-            find common -type f -exec sed -i '' 's/<zip\.h>/"..\/minizip\/zip.h"/g' {} + || true
-            find common -type f -exec sed -i '' 's/<unzip\.h>/"..\/minizip\/unzip.h"/g' {} + || true
-          fi
+          # Đổi chuẩn tên gọi minizip để lấy hàng từ CocoaPods
+          find . -type f -exec sed -i '' 's/<zip\.h>/<minizip\/zip\.h>/g' {} + || true
+          find . -type f -exec sed -i '' 's/<unzip\.h>/<minizip\/unzip\.h>/g' {} + || true
+          find . -type f -exec sed -i '' 's/"zip\.h"/<minizip\/zip\.h>/g' {} + || true
+          find . -type f -exec sed -i '' 's/"unzip\.h"/<minizip\/unzip\.h>/g' {} + || true
           
           find . -type f -name "util.cpp" -exec sed -i '' 's/int status = system(.*);/int status = 0;/g' {} + || true
 
-          # --- VŨ KHÍ TỐI THƯỢNG: TIÊM KHÁNG THỂ VÀO C++ ---
+          # Tiêm kháng thể giải quyết vòng lặp ZSignAsset và stdint
           python3 -c "
           import os
 
-          # 1. Bổ sung thư viện nền tảng cho signing.h
           if os.path.exists('signing.h'):
               with open('signing.h', 'r') as file: c = file.read()
               if '#include <stdint.h>' not in c:
-                  injection = \"\"\"#pragma once
-          #include <stdint.h>
-          #include <string>
-          #include <vector>
-          using namespace std;
-          \"\"\"
+                  injection = \"\"\"#pragma once\n#include <stdint.h>\n#include <string>\n#include <vector>\nusing namespace std;\n\"\"\"
                   with open('signing.h', 'w') as file: file.write(injection + c.replace('#pragma once', ''))
 
-          # 2. Giải quyết vòng lặp ZSignAsset
           for f in ['archo.h', 'macho.h', 'bundle.h']:
               if os.path.exists(f):
                   with open(f, 'r') as file: c = file.read()
@@ -80,7 +62,7 @@ jobs:
                   with open('signing.cpp', 'w') as file: file.write('#include \"signing.h\"\n' + c)
           "
 
-      - name: Step 2 - Patch Podspec
+      - name: Step 2 - Patch Podspec (Lay Minizip Chinh Chu)
         run: |
           cat << 'EOF' > patch_podspec.py
           import glob
@@ -89,7 +71,8 @@ jobs:
               if 'OpenSSL-Universal' not in c:
                   idx = c.rfind('end')
                   if idx != -1:
-                      c = c[:idx] + "\n  s.dependency 'OpenSSL-Universal'\n  s.libraries = 'z'\n" + c[idx:]
+                      # Ép cài minizip từ kho Apple
+                      c = c[:idx] + "\n  s.dependency 'OpenSSL-Universal'\n  s.dependency 'minizip'\n  s.libraries = 'z'\n" + c[idx:]
                       with open(pod, 'w') as f: f.write(c)
           EOF
           python3 patch_podspec.py
