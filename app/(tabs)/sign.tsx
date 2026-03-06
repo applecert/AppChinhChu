@@ -6,13 +6,14 @@ import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import JSZip from 'jszip'; // THƯ VIỆN GIẢI NÉN ZIP MỚI CÀI
+import JSZip from 'jszip'; 
 
 // 🔴 MỞ CỔNG KẾT NỐI VỚI LÕI NATIVE (IOS/C++)
 import { requireNativeModule } from 'expo-modules-core';
 const IpaSigner = requireNativeModule('IpaSigner');
 
-import { FileArchive, Share, Trash2, FolderOpen, Layers, Wrench, X, FileKey, CheckCircle2, Rocket, PlusCircle, ShieldCheck } from 'lucide-react-native';
+// Đã import thêm MoreVertical (Dấu 3 chấm)
+import { FileArchive, Share, Trash2, FolderOpen, Layers, Wrench, X, FileKey, CheckCircle2, Rocket, PlusCircle, ShieldCheck, MoreVertical } from 'lucide-react-native';
 
 interface LocalFile { name: string; uri: string; size: string; timestamp: number; }
 interface CertItem { id: string; name: string; p12Uri: string; provUri: string; password: string; }
@@ -22,7 +23,10 @@ export default function SignScreen() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'ipa' | 'installed'>('ipa');
 
-  // KHO CHỨNG CHỈ (LƯU VĨNH VIỄN TRÊN MÁY)
+  // MENU 3 CHẤM
+  const [menuVisible, setMenuVisible] = useState(false);
+
+  // KHO CHỨNG CHỈ 
   const [savedCerts, setSavedCerts] = useState<CertItem[]>([]);
   const [selectedCert, setSelectedCert] = useState<CertItem | null>(null);
 
@@ -31,7 +35,7 @@ export default function SignScreen() {
   const [selectedIpa, setSelectedIpa] = useState<LocalFile | null>(null);
   const [isSigning, setIsSigning] = useState(false);
 
-  // STATE CHO POPUP NHẬP PASS KHI GIẢI NÉN ZIP
+  // STATE POPUP NHẬP PASS 
   const [pwdModalVisible, setPwdModalVisible] = useState(false);
   const [tempZipData, setTempZipData] = useState<any>(null);
   const [certPassword, setCertPassword] = useState('');
@@ -48,8 +52,8 @@ export default function SignScreen() {
       const dir = FileSystem.documentDirectory;
       if (!dir) return;
       const files = await FileSystem.readDirectoryAsync(dir);
-      const ipaFiles = files.filter(f => f.endsWith('.ipa') && !f.startsWith('signed_')); // Lọc không hiện IPA đã ký ở Tab 1
-      const signedFiles = files.filter(f => f.startsWith('signed_') && f.endsWith('.ipa')); // Dành cho Tab 2 (Sau này làm)
+      const ipaFiles = files.filter(f => f.endsWith('.ipa') && !f.startsWith('signed_')); 
+      const signedFiles = files.filter(f => f.startsWith('signed_') && f.endsWith('.ipa')); 
 
       const fileData = await Promise.all(
         (activeTab === 'ipa' ? ipaFiles : signedFiles).map(async (filename) => {
@@ -71,8 +75,33 @@ export default function SignScreen() {
     Alert.alert("Xóa File", `Xóa file ${name}?`, [ { text: "Hủy", style: "cancel" }, { text: "Xóa", style: "destructive", onPress: async () => { await FileSystem.deleteAsync(uri); loadDownloadedFiles(); } } ]);
   };
 
+  // 🔴 THÊM MỚI: HÀM IMPORT FILE IPA VÀO APP
+  const importIpaFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+      
+      const file = result.assets[0];
+      if (!file.name.toLowerCase().endsWith('.ipa')) {
+        return Alert.alert("Lỗi", "Vui lòng chọn file có đuôi .ipa");
+      }
+
+      setLoading(true);
+      const dir = FileSystem.documentDirectory;
+      const newUri = dir + file.name;
+
+      // Copy file vào thư mục tài liệu của App
+      await FileSystem.copyAsync({ from: file.uri, to: newUri });
+      Alert.alert("Thành công", "Đã thêm file IPA vào danh sách!");
+      loadDownloadedFiles();
+    } catch (error: any) {
+      setLoading(false);
+      Alert.alert("Lỗi", "Không thể thêm file: " + error.message);
+    }
+  };
+
   // ==========================================
-  // HỆ THỐNG KHO CHỨNG CHỈ (CERTIFICATE LIBRARY)
+  // HỆ THỐNG KHO CHỨNG CHỈ
   // ==========================================
   const loadSavedCerts = async () => {
     try {
@@ -158,34 +187,20 @@ export default function SignScreen() {
   };
 
   // ==========================================
-  // 🔴 THỰC THI KÝ APP (BẮN VÀO LÕI NATIVE)
+  // THỰC THI KÝ APP
   // ==========================================
   const handleStartSign = async () => {
     if (!selectedCert || !selectedIpa) return Alert.alert("Thiếu", "Vui lòng chọn đủ File IPA và Chứng chỉ để ký.");
     
     setIsSigning(true);
-    
     try {
-      // Bắn 4 thông số xuống lõi C++/Swift
-      const result = await IpaSigner.signAppOffline(
-        selectedIpa.uri,
-        selectedCert.p12Uri,
-        selectedCert.provUri,
-        selectedCert.password
-      );
-
+      const result = await IpaSigner.signAppOffline(selectedIpa.uri, selectedCert.p12Uri, selectedCert.provUri, selectedCert.password);
       setIsSigning(false);
       setSignModalVisible(false);
-
       Alert.alert("🎉 KÝ THÀNH CÔNG!", `File IPA mới đã được tạo và sẵn sàng cài đặt!`, [
-          { text: "Để sau", style: "cancel", onPress: () => loadDownloadedFiles() }, // Tải lại danh sách
-          { text: "Cài Đặt Ngay", onPress: () => {
-              // TODO: Tính năng Tạo Server cục bộ trả link manifest.plist để cài đặt
-              Alert.alert("Thông báo", "Cài đặt: " + result.outputPath);
-              loadDownloadedFiles();
-          }}
+          { text: "Để sau", style: "cancel", onPress: () => loadDownloadedFiles() }, 
+          { text: "Cài Đặt Ngay", onPress: () => { Alert.alert("Thông báo", "Cài đặt: " + result.outputPath); loadDownloadedFiles(); }}
       ]);
-      
     } catch (error: any) {
       setIsSigning(false);
       Alert.alert("Lỗi Ký App", error.message || "Quá trình nhúng chứng chỉ thất bại.");
@@ -215,7 +230,14 @@ export default function SignScreen() {
     <View style={styles.container}>
       <StatusBar style="light" />
       <View style={styles.header}>
-        <Text style={styles.largeTitle}>Quản Lý Ký App <Wrench color="#0A84FF" size={26} strokeWidth={2.5} /></Text>
+        {/* 🔴 THÊM DẤU 3 CHẤM VÀO THANH TIÊU ĐỀ */}
+        <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20}}>
+          <Text style={styles.largeTitle}>Quản Lý Ký App <Wrench color="#0A84FF" size={26} strokeWidth={2.5} /></Text>
+          <TouchableOpacity style={{padding: 5}} onPress={() => setMenuVisible(true)}>
+            <MoreVertical color="#FFF" size={28} />
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.tabContainer}>
           <TouchableOpacity style={[styles.tab, activeTab === 'ipa' && styles.tabActive]} onPress={() => setActiveTab('ipa')}><Text style={[styles.tabText, activeTab === 'ipa' && styles.tabTextActive]}>File IPA Gốc</Text></TouchableOpacity>
           <TouchableOpacity style={[styles.tab, activeTab === 'installed' && styles.tabActive]} onPress={() => setActiveTab('installed')}><Text style={[styles.tabText, activeTab === 'installed' && styles.tabTextActive]}>App Đã Ký</Text></TouchableOpacity>
@@ -229,6 +251,25 @@ export default function SignScreen() {
       )}
 
       {/* ============================================== */}
+      {/* 🔴 MENU 3 CHẤM (THÊM IPA / CHỨNG CHỈ) */}
+      {/* ============================================== */}
+      <Modal visible={menuVisible} transparent animationType="fade">
+        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
+          <View style={styles.menuBox}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); importIpaFile(); }}>
+              <PlusCircle color="#0A84FF" size={22} />
+              <Text style={styles.menuText}>Thêm File IPA</Text>
+            </TouchableOpacity>
+            <View style={{height: 1, backgroundColor: '#333'}} />
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); setSelectedIpa(null); setSignModalVisible(true); }}>
+              <FileKey color="#FFD700" size={22} />
+              <Text style={styles.menuText}>Quản Lý Chứng Chỉ</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ============================================== */}
       {/* MODAL KÝ APP & QUẢN LÝ KHO CHỨNG CHỈ */}
       {/* ============================================== */}
       <Modal visible={signModalVisible} transparent animationType="slide">
@@ -236,10 +277,10 @@ export default function SignScreen() {
           <View style={styles.modalBox}>
             <TouchableOpacity style={styles.closeModalBtn} onPress={() => !isSigning && setSignModalVisible(false)}><X color="#888" size={24} /></TouchableOpacity>
             
-            <Text style={styles.modalTitle}>CHỌN CHỨNG CHỈ</Text>
-            <Text style={styles.modalSub} numberOfLines={1}>File IPA: {selectedIpa?.name}</Text>
+            <Text style={styles.modalTitle}>{selectedIpa ? 'CHỌN CHỨNG CHỈ' : 'KHO CHỨNG CHỈ CỦA BẠN'}</Text>
+            {selectedIpa && <Text style={styles.modalSub} numberOfLines={1}>File IPA: {selectedIpa.name}</Text>}
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 20}}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 20, paddingTop: 10}}>
               
               <TouchableOpacity style={styles.addCertBtn} onPress={importCertFromZip} disabled={isUnzipping}>
                  {isUnzipping ? <ActivityIndicator color="#0A84FF" /> : <PlusCircle color="#0A84FF" size={24} />}
@@ -263,25 +304,27 @@ export default function SignScreen() {
                   </TouchableOpacity>
                 )
               })}
-
             </ScrollView>
 
-            <View style={{paddingTop: 15, borderTopWidth: 1, borderColor: '#222'}}>
-              <TouchableOpacity style={[styles.signBtn, (!selectedCert || isSigning) && {opacity: 0.5}]} onPress={handleStartSign} disabled={!selectedCert || isSigning}>
-                {isSigning ? (
-                  <View style={{flexDirection: 'row', alignItems: 'center'}}><ActivityIndicator color="#FFF" style={{marginRight: 10}} /><Text style={styles.signBtnText}>ĐANG TIẾM QUYỀN LÕI IPA...</Text></View>
-                ) : (
-                  <View style={{flexDirection: 'row', alignItems: 'center'}}><Rocket color="#FFF" size={20} style={{marginRight: 8}} /><Text style={styles.signBtnText}>CHẠM ĐỂ KÝ NGAY</Text></View>
-                )}
-              </TouchableOpacity>
-            </View>
+            {/* Chỉ hiện nút Ký khi đang ở chế độ chọn IPA để ký */}
+            {selectedIpa && (
+              <View style={{paddingTop: 15, borderTopWidth: 1, borderColor: '#222'}}>
+                <TouchableOpacity style={[styles.signBtn, (!selectedCert || isSigning) && {opacity: 0.5}]} onPress={handleStartSign} disabled={!selectedCert || isSigning}>
+                  {isSigning ? (
+                    <View style={{flexDirection: 'row', alignItems: 'center'}}><ActivityIndicator color="#FFF" style={{marginRight: 10}} /><Text style={styles.signBtnText}>ĐANG TIẾM QUYỀN LÕI IPA...</Text></View>
+                  ) : (
+                    <View style={{flexDirection: 'row', alignItems: 'center'}}><Rocket color="#FFF" size={20} style={{marginRight: 8}} /><Text style={styles.signBtnText}>CHẠM ĐỂ KÝ NGAY</Text></View>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
 
           </View>
         </View>
       </Modal>
 
       {/* ============================================== */}
-      {/* MODAL NHẬP MẬT KHẨU KHI GIẢI NÉN ZIP */}
+      {/* MODAL NHẬP MẬT KHẨU */}
       {/* ============================================== */}
       <Modal visible={pwdModalVisible} transparent animationType="fade">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBgCentered}>
@@ -289,9 +332,7 @@ export default function SignScreen() {
              <ShieldCheck color="#FFD700" size={50} style={{marginBottom: 15}}/>
              <Text style={styles.pwdTitle}>BẢO MẬT CHỨNG CHỈ</Text>
              <Text style={styles.pwdSub}>Nhập mật khẩu cho tệp {tempZipData?.zipName}</Text>
-             
              <TextInput style={styles.pwdInput} placeholder="Mật khẩu file P12..." placeholderTextColor="#555" secureTextEntry value={certPassword} onChangeText={setCertPassword} autoFocus />
-             
              <View style={{flexDirection: 'row', gap: 10, marginTop: 20}}>
                <TouchableOpacity style={styles.pwdBtnCancel} onPress={() => setPwdModalVisible(false)}><Text style={{color: '#FFF', fontWeight: 'bold'}}>HỦY BỎ</Text></TouchableOpacity>
                <TouchableOpacity style={styles.pwdBtnSave} onPress={saveCertToStorage}><Text style={{color: '#000', fontWeight: '900'}}>LƯU VÀO KHO</Text></TouchableOpacity>
@@ -307,7 +348,7 @@ export default function SignScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000' },
   header: { paddingTop: 60, paddingHorizontal: 20, paddingBottom: 15, borderBottomWidth: 0.5, borderColor: '#333' },
-  largeTitle: { color: '#FFFFFF', fontSize: 34, fontWeight: '700', marginBottom: 20 },
+  largeTitle: { color: '#FFFFFF', fontSize: 34, fontWeight: '700' },
   tabContainer: { flexDirection: 'row', backgroundColor: '#1C1C1E', borderRadius: 12, padding: 4, borderWidth: 1, borderColor: '#333' },
   tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
   tabActive: { backgroundColor: '#333', shadowColor: '#000', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
@@ -350,5 +391,11 @@ const styles = StyleSheet.create({
   pwdSub: { color: '#888', fontSize: 13, marginBottom: 20, textAlign: 'center' },
   pwdInput: { backgroundColor: '#000', width: '100%', height: 55, borderRadius: 12, paddingHorizontal: 15, color: '#FFF', fontSize: 16, borderWidth: 1, borderColor: '#444', textAlign: 'center', fontWeight: 'bold' },
   pwdBtnCancel: { flex: 1, backgroundColor: '#333', height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  pwdBtnSave: { flex: 1, backgroundColor: '#FFD700', height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }
+  pwdBtnSave: { flex: 1, backgroundColor: '#FFD700', height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+
+  // MENU 3 CHẤM 
+  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  menuBox: { position: 'absolute', top: 100, right: 20, backgroundColor: '#222', borderRadius: 16, width: 220, borderWidth: 1, borderColor: '#444', shadowColor: '#000', shadowOffset: {width: 0, height: 5}, shadowOpacity: 0.5, shadowRadius: 10, overflow: 'hidden' },
+  menuItem: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 15 },
+  menuText: { color: '#FFF', fontSize: 16, fontWeight: '600' }
 });
