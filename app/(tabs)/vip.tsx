@@ -50,7 +50,6 @@ export default function VIPScreen() {
   const slideX = useRef(new Animated.Value(0)).current;
   const slideW = useRef(new Animated.Value(0)).current;
 
-  // HÀM ĐỌC THỜI GIAN VIP CHUẨN WEB
   const checkVipStatus = (vipExpireData: any) => {
     if (!vipExpireData) return false;
     let millis = 0;
@@ -63,7 +62,7 @@ export default function VIPScreen() {
   useEffect(() => {
     fetchVIPApps().then((data) => {
       setApps(data);
-      const uniqueCats = Array.from(new Set(data.map(app => app.category))).filter(c => c !== 'Khác');
+      const uniqueCats = Array.from(new Set(data.map(app => app.category))).filter(c => c && c !== 'Khác');
       setCategories(['Tất cả', ...uniqueCats]); setLoading(false);
     });
 
@@ -103,7 +102,10 @@ export default function VIPScreen() {
     Alert.alert('Chỉ dành cho VIP', 'Mở khóa VIP để tải ứng dụng độc quyền!', [{ text: 'Hủy', style: 'cancel' }, { text: 'Nâng Cấp Ngay', onPress: () => router.push('/buy-vip') }]);
   };
 
-  const filteredApps = listCat === 'Tất cả' ? apps : apps.filter(a => a.category === listCat);
+  // 🔴 SỬA BỘ LỌC
+  const filteredApps = listCat === 'Tất cả' 
+    ? apps 
+    : apps.filter(a => a.category && a.category.trim().toLowerCase() === listCat.trim().toLowerCase());
 
   return (
     <View style={styles.container}>
