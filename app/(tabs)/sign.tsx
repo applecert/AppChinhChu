@@ -8,11 +8,9 @@ import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import JSZip from 'jszip'; 
 
-// 🔴 MỞ CỔNG KẾT NỐI VỚI LÕI NATIVE (IOS/C++)
 import { requireNativeModule } from 'expo-modules-core';
 const IpaSigner = requireNativeModule('IpaSigner');
 
-// Đã import thêm MoreVertical (Dấu 3 chấm)
 import { FileArchive, Share, Trash2, FolderOpen, Layers, Wrench, X, FileKey, CheckCircle2, Rocket, PlusCircle, ShieldCheck, MoreVertical } from 'lucide-react-native';
 
 interface LocalFile { name: string; uri: string; size: string; timestamp: number; }
@@ -22,30 +20,37 @@ export default function SignScreen() {
   const [localFiles, setLocalFiles] = useState<LocalFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'ipa' | 'installed'>('ipa');
-
-  // MENU 3 CHẤM
   const [menuVisible, setMenuVisible] = useState(false);
-
-  // KHO CHỨNG CHỈ 
   const [savedCerts, setSavedCerts] = useState<CertItem[]>([]);
   const [selectedCert, setSelectedCert] = useState<CertItem | null>(null);
-
-  // STATE POPUP
   const [signModalVisible, setSignModalVisible] = useState(false);
   const [selectedIpa, setSelectedIpa] = useState<LocalFile | null>(null);
   const [isSigning, setIsSigning] = useState(false);
-
-  // STATE POPUP NHẬP PASS 
   const [pwdModalVisible, setPwdModalVisible] = useState(false);
   const [tempZipData, setTempZipData] = useState<any>(null);
   const [certPassword, setCertPassword] = useState('');
   const [isUnzipping, setIsUnzipping] = useState(false);
+  
+  // 🔴 Ổ KHÓA CHỐNG KẸT DOCUMENT PICKER
+  const [isPicking, setIsPicking] = useState(false);
 
-  useFocusEffect(useCallback(() => { loadDownloadedFiles(); loadSavedCerts(); }, []));
+  // 🔴 ÉP APPLE HIỆN QUYỀN TRUY CẬP TÀI LIỆU
+  const forceIOSFolderCreation = async () => {
+    try {
+      const initDir = FileSystem.documentDirectory + 'IPAVIET_Data/';
+      const dirInfo = await FileSystem.getInfoAsync(initDir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(initDir, { intermediates: true });
+      }
+    } catch (e) {}
+  };
 
-  // ==========================================
-  // HỆ THỐNG QUẢN LÝ FILE IPA
-  // ==========================================
+  useFocusEffect(useCallback(() => { 
+    forceIOSFolderCreation();
+    loadDownloadedFiles(); 
+    loadSavedCerts(); 
+  }, []));
+
   const loadDownloadedFiles = async () => {
     setLoading(true);
     try {
@@ -71,12 +76,15 @@ export default function SignScreen() {
   useEffect(() => { loadDownloadedFiles(); }, [activeTab]);
 
   const handleShare = async (uri: string) => { try { const canShare = await Sharing.isAvailableAsync(); if (canShare) await Sharing.shareAsync(uri); } catch (error) {} };
+  
   const handleDelete = (uri: string, name: string) => {
     Alert.alert("Xóa File", `Xóa file ${name}?`, [ { text: "Hủy", style: "cancel" }, { text: "Xóa", style: "destructive", onPress: async () => { await FileSystem.deleteAsync(uri); loadDownloadedFiles(); } } ]);
   };
 
-  // 🔴 THÊM MỚI: HÀM IMPORT FILE IPA VÀO APP
+  // 🔴 HÀM IMPORT IPA (ĐÃ BỌC THÉP CHỐNG LỖI PICKER)
   const importIpaFile = async () => {
+    if (isPicking) return;
+    setIsPicking(true);
     try {
       const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
       if (result.canceled || !result.assets || result.assets.length === 0) return;
@@ -88,21 +96,19 @@ export default function SignScreen() {
 
       setLoading(true);
       const dir = FileSystem.documentDirectory;
-      const newUri = dir + file.name;
+      const newUri = dir + file.name.replace(/\s+/g, '_'); // Fix lỗi khoảng trắng trong tên file
 
-      // Copy file vào thư mục tài liệu của App
       await FileSystem.copyAsync({ from: file.uri, to: newUri });
       Alert.alert("Thành công", "Đã thêm file IPA vào danh sách!");
       loadDownloadedFiles();
     } catch (error: any) {
+      Alert.alert("Lỗi", "Vui lòng vuốt tắt App và mở lại nếu bị kẹt chọn file.");
+    } finally {
+      setIsPicking(false);
       setLoading(false);
-      Alert.alert("Lỗi", "Không thể thêm file: " + error.message);
     }
   };
 
-  // ==========================================
-  // HỆ THỐNG KHO CHỨNG CHỈ
-  // ==========================================
   const loadSavedCerts = async () => {
     try {
       const certsJson = await AsyncStorage.getItem('@saved_certs');
@@ -110,7 +116,10 @@ export default function SignScreen() {
     } catch (error) {}
   };
 
+  // 🔴 HÀM ĐỌC ZIP CHỨNG CHỈ (SIÊU CẤP CỨU)
   const importCertFromZip = async () => {
+    if (isPicking) return;
+    setIsPicking(true);
     try {
       const result = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
       if (result.canceled || !result.assets || result.assets.length === 0) return;
@@ -132,17 +141,21 @@ export default function SignScreen() {
         }
       }
 
-      setIsUnzipping(false);
-
-      if (!p12Data || !provData) return Alert.alert('Lỗi', 'Tệp ZIP không hợp lệ. Bên trong phải chứa ít nhất 1 file .p12 và 1 file .mobileprovision');
+      if (!p12Data || !provData) {
+        setIsUnzipping(false);
+        return Alert.alert('Lỗi ZIP', 'Tệp ZIP không hợp lệ. Bên trong phải chứa ít nhất 1 file .p12 và 1 file .mobileprovision');
+      }
 
       setTempZipData({ p12Data, provData, p12Name, provName, zipName: file.name.replace('.zip', '') });
       setCertPassword('');
+      setIsUnzipping(false);
       setPwdModalVisible(true);
 
-    } catch (error) {
+    } catch (error: any) {
       setIsUnzipping(false);
-      Alert.alert("Lỗi", "Không thể đọc file ZIP này.");
+      Alert.alert("Lỗi Hệ Thống", "Hãy vuốt tắt App và mở lại. Lỗi đọc file bị kẹt.");
+    } finally {
+      setIsPicking(false);
     }
   };
 
@@ -153,7 +166,7 @@ export default function SignScreen() {
     try {
       const certDir = FileSystem.documentDirectory + 'Certs/';
       const dirInfo = await FileSystem.getInfoAsync(certDir);
-      if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(certDir);
+      if (!dirInfo.exists) await FileSystem.makeDirectoryAsync(certDir, { intermediates: true });
 
       const id = Date.now().toString();
       const p12Uri = certDir + id + '_' + tempZipData.p12Name;
@@ -170,7 +183,7 @@ export default function SignScreen() {
       setSelectedCert(newCert); 
       Alert.alert("Thành công", "Chứng chỉ đã được nạp vào hệ thống!");
     } catch (error) {
-      Alert.alert("Lỗi", "Không thể lưu chứng chỉ vào máy.");
+      Alert.alert("Lỗi", "Không thể lưu chứng chỉ vào máy. Có thể do thiết bị từ chối quyền ghi.");
     }
   };
 
@@ -186,9 +199,6 @@ export default function SignScreen() {
     ]);
   };
 
-  // ==========================================
-  // THỰC THI KÝ APP
-  // ==========================================
   const handleStartSign = async () => {
     if (!selectedCert || !selectedIpa) return Alert.alert("Thiếu", "Vui lòng chọn đủ File IPA và Chứng chỉ để ký.");
     
@@ -207,9 +217,6 @@ export default function SignScreen() {
     }
   };
 
-  // ==========================================
-  // GIAO DIỆN
-  // ==========================================
   const renderItem = ({ item }: { item: LocalFile }) => (
     <View style={styles.fileCard}>
       <View style={styles.iconBox}><FileArchive color="#0A84FF" size={28} /></View>
@@ -230,7 +237,6 @@ export default function SignScreen() {
     <View style={styles.container}>
       <StatusBar style="light" />
       <View style={styles.header}>
-        {/* 🔴 THÊM DẤU 3 CHẤM VÀO THANH TIÊU ĐỀ */}
         <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20}}>
           <Text style={styles.largeTitle}>Quản Lý Ký App <Wrench color="#0A84FF" size={26} strokeWidth={2.5} /></Text>
           <TouchableOpacity style={{padding: 5}} onPress={() => setMenuVisible(true)}>
@@ -250,9 +256,6 @@ export default function SignScreen() {
           <FlatList data={localFiles} keyExtractor={(item) => item.uri} renderItem={renderItem} contentContainerStyle={styles.listContent} /> 
       )}
 
-      {/* ============================================== */}
-      {/* 🔴 MENU 3 CHẤM (THÊM IPA / CHỨNG CHỈ) */}
-      {/* ============================================== */}
       <Modal visible={menuVisible} transparent animationType="fade">
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
           <View style={styles.menuBox}>
@@ -269,9 +272,6 @@ export default function SignScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* ============================================== */}
-      {/* MODAL KÝ APP & QUẢN LÝ KHO CHỨNG CHỈ */}
-      {/* ============================================== */}
       <Modal visible={signModalVisible} transparent animationType="slide">
         <View style={styles.modalBg}>
           <View style={styles.modalBox}>
@@ -282,7 +282,7 @@ export default function SignScreen() {
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 20, paddingTop: 10}}>
               
-              <TouchableOpacity style={styles.addCertBtn} onPress={importCertFromZip} disabled={isUnzipping}>
+              <TouchableOpacity style={styles.addCertBtn} onPress={importCertFromZip} disabled={isUnzipping || isPicking}>
                  {isUnzipping ? <ActivityIndicator color="#0A84FF" /> : <PlusCircle color="#0A84FF" size={24} />}
                  <Text style={styles.addCertText}>{isUnzipping ? 'Đang giải nén ZIP...' : 'Nhập tệp Chứng chỉ (.zip)'}</Text>
               </TouchableOpacity>
@@ -306,26 +306,21 @@ export default function SignScreen() {
               })}
             </ScrollView>
 
-            {/* Chỉ hiện nút Ký khi đang ở chế độ chọn IPA để ký */}
             {selectedIpa && (
               <View style={{paddingTop: 15, borderTopWidth: 1, borderColor: '#222'}}>
                 <TouchableOpacity style={[styles.signBtn, (!selectedCert || isSigning) && {opacity: 0.5}]} onPress={handleStartSign} disabled={!selectedCert || isSigning}>
                   {isSigning ? (
-                    <View style={{flexDirection: 'row', alignItems: 'center'}}><ActivityIndicator color="#FFF" style={{marginRight: 10}} /><Text style={styles.signBtnText}>ĐANG TIẾM QUYỀN LÕI IPA...</Text></View>
+                    <View style={{flexDirection: 'row', alignItems: 'center'}}><ActivityIndicator color="#FFF" style={{marginRight: 10}} /><Text style={styles.signBtnText}>ĐANG ÉP XUNG LÕI IPA...</Text></View>
                   ) : (
                     <View style={{flexDirection: 'row', alignItems: 'center'}}><Rocket color="#FFF" size={20} style={{marginRight: 8}} /><Text style={styles.signBtnText}>CHẠM ĐỂ KÝ NGAY</Text></View>
                   )}
                 </TouchableOpacity>
               </View>
             )}
-
           </View>
         </View>
       </Modal>
 
-      {/* ============================================== */}
-      {/* MODAL NHẬP MẬT KHẨU */}
-      {/* ============================================== */}
       <Modal visible={pwdModalVisible} transparent animationType="fade">
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBgCentered}>
           <View style={styles.pwdBox}>
@@ -340,7 +335,6 @@ export default function SignScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-
     </View>
   );
 }
@@ -365,26 +359,19 @@ const styles = StyleSheet.create({
   fileSize: { color: '#8E8E93', fontSize: 13 },
   actionGroup: { flexDirection: 'row', gap: 10, marginTop: 15, justifyContent: 'flex-end', paddingTop: 15, borderTopWidth: 0.5, borderColor: '#333' },
   iconBtn: { width: 40, height: 40, backgroundColor: '#222', borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-
-  // GIAO DIỆN CHỌN CHỨNG CHỈ (MODAL 1)
   modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   modalBox: { backgroundColor: '#111', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 25, paddingBottom: 40, borderWidth: 1, borderColor: '#222', height: '80%' },
   closeModalBtn: { position: 'absolute', top: 20, right: 20, zIndex: 10, padding: 5, backgroundColor: '#222', borderRadius: 20 },
   modalTitle: { color: '#FFF', fontSize: 20, fontWeight: '900', letterSpacing: 1, marginBottom: 5 },
   modalSub: { color: '#0A84FF', fontSize: 14, fontWeight: '600', marginBottom: 20, paddingRight: 30 },
-  
   addCertBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(10,132,255,0.1)', padding: 18, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(10,132,255,0.3)', borderStyle: 'dashed', marginBottom: 20 },
   addCertText: { color: '#0A84FF', fontSize: 15, fontWeight: 'bold', marginLeft: 10 },
-
   certCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1A1A1E', padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#333', marginBottom: 12 },
   certCardActive: { borderColor: '#32D74B', backgroundColor: 'rgba(50,215,75,0.05)' },
   certName: { color: '#FFF', fontSize: 16, fontWeight: '700', marginBottom: 2 },
   certSub: { color: '#888', fontSize: 12 },
-
   signBtn: { backgroundColor: '#0A84FF', height: 60, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   signBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800', letterSpacing: 1 },
-
-  // GIAO DIỆN NHẬP PASS (MODAL 2)
   modalBgCentered: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   pwdBox: { width: '100%', backgroundColor: '#1C1C1E', padding: 30, borderRadius: 24, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
   pwdTitle: { color: '#FFF', fontSize: 18, fontWeight: '900', marginBottom: 5 },
@@ -392,8 +379,6 @@ const styles = StyleSheet.create({
   pwdInput: { backgroundColor: '#000', width: '100%', height: 55, borderRadius: 12, paddingHorizontal: 15, color: '#FFF', fontSize: 16, borderWidth: 1, borderColor: '#444', textAlign: 'center', fontWeight: 'bold' },
   pwdBtnCancel: { flex: 1, backgroundColor: '#333', height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   pwdBtnSave: { flex: 1, backgroundColor: '#FFD700', height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-
-  // MENU 3 CHẤM 
   menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
   menuBox: { position: 'absolute', top: 100, right: 20, backgroundColor: '#222', borderRadius: 16, width: 220, borderWidth: 1, borderColor: '#444', shadowColor: '#000', shadowOffset: {width: 0, height: 5}, shadowOpacity: 0.5, shadowRadius: 10, overflow: 'hidden' },
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 15 },
