@@ -12,7 +12,9 @@
       "infoPlist": {
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true,
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSDocumentsFolderUsageDescription": "Cho phép ứng dụng lưu và quản lý file IPA trong thư mục Tài liệu của bạn.",
+        "NSPhotoLibraryAddUsageDescription": "Cho phép ứng dụng lưu trữ file vào thiết bị."
       }
     },
     "extra": {
