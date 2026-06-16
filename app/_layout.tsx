@@ -326,6 +326,13 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLORS.background } }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen 
+            name="movie" 
+            options={{ 
+              presentation: 'card', 
+              animation: 'slide_from_right' 
+            }} 
+          />
+          <Stack.Screen 
             name="details/[id]" 
             options={{ 
               presentation: 'card', 

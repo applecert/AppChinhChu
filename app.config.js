@@ -1,6 +1,10 @@
+const appType = process.env.EXPO_PUBLIC_APP_TYPE;
+const appName = appType === 'admin' ? "VSign Admin" : appType === 'movie' ? "RoPhim" : "VSign";
+const bundleId = appType === 'admin' ? "com.ipaviet.esign.admin" : appType === 'movie' ? "com.ipaviet.esign.movie" : "com.ipaviet.esign";
+
 module.exports = {
   expo: {
-    name: process.env.EXPO_PUBLIC_APP_TYPE === 'admin' ? "VSign Admin" : "VSign",
+    name: appName,
     slug: "VSign",
     scheme: "myapp",
     userInterfaceStyle: "automatic",
@@ -17,7 +21,7 @@ module.exports = {
     ios: {
       icon: "./assets/images/icon.png",
       supportsTablet: true,
-      bundleIdentifier: process.env.EXPO_PUBLIC_APP_TYPE === 'admin' ? "com.ipaviet.esign.admin" : "com.ipaviet.esign",
+      bundleIdentifier: bundleId,
       infoPlist: {
         LSApplicationQueriesSchemes: [
           "itms-services"

@@ -164,6 +164,9 @@ export default function HomeScreen() {
   if (process.env.EXPO_PUBLIC_APP_TYPE === 'admin') {
     return <Redirect href="/admin" />;
   }
+  if (process.env.EXPO_PUBLIC_APP_TYPE === 'movie') {
+    return <Redirect href="/movie" />;
+  }
   useThemeUpdate();
   const router = useRouter();
   const [featuredApp, setFeaturedApp] = useState<AppItem | null>(null);

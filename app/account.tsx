@@ -11,7 +11,7 @@ import {
   Fingerprint, User, Mail, Lock, BellRing, Star, Gem, ChevronRight, 
   CloudDownload, Clock, ShieldCheck, Languages, Palette, X, Database, 
   HelpCircle, MessageSquare, FileText, Shield, Instagram, Facebook, 
-  Share2, RefreshCw
+  Share2, RefreshCw, Film
 } from 'lucide-react-native';
 
 import { auth, db } from '../firebaseConfig';
@@ -369,6 +369,8 @@ export default function AccountScreen() {
         <View style={[styles.groupCard, SHADOWS.glowCard]}>
           <View style={styles.groupInside}>
             {renderRow(Palette, TXT.setupThemeRow, TXT.openLabel, '#8E8E93', false, false, () => navigateFromModal('/settings'))}
+            <View style={styles.divider} />
+            {renderRow(Film, 'Rạp phim online', 'RoPhim', '#FFB822', false, false, () => navigateFromModal('/movie'))}
             <View style={styles.divider} />
             {renderRow(CloudDownload, TXT.cloudStorage, '5 GB', '#8E8E93', false, false)}
             <View style={styles.divider} />
