@@ -1,0 +1,6 @@
+node_modules/
+.expo/
+dist/
+*.p12
+*.mobileprovision
+google_apps_script.js
