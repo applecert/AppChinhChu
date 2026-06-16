@@ -5,7 +5,7 @@ import {
   DeviceEventEmitter, Alert
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { useRouter } from 'expo-router';
+import { useRouter, Redirect } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -161,6 +161,9 @@ const ShimmerVipCard = ({ isLight, opacity }: { isLight: boolean; opacity: Anima
 // MAIN HOME SCREEN
 // ──────────────────────────────────────────────
 export default function HomeScreen() {
+  if (process.env.EXPO_PUBLIC_APP_TYPE === 'admin') {
+    return <Redirect href="/admin" />;
+  }
   useThemeUpdate();
   const router = useRouter();
   const [featuredApp, setFeaturedApp] = useState<AppItem | null>(null);

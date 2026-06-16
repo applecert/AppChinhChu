@@ -5,6 +5,12 @@ on:
 jobs:
   build-ios:
     runs-on: macos-latest
+    strategy:
+      matrix:
+        app_type: [user, admin]
+    name: Build iOS (${{ matrix.app_type }})
+    env:
+      EXPO_PUBLIC_APP_TYPE: ${{ matrix.app_type }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -129,10 +135,10 @@ jobs:
         run: |
           mkdir -p Payload
           mv ios/XCodeData/Build/Products/Release-iphoneos/*.app Payload/
-          zip -r AppIPAVIET.ipa Payload
+          zip -r AppIPAVIET_${{ matrix.app_type }}.ipa Payload
 
       - name: Step 6 - Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: File-IPA-Goc
-          path: AppIPAVIET.ipa
+          name: File-IPA-Goc-${{ matrix.app_type }}
+          path: AppIPAVIET_${{ matrix.app_type }}.ipa

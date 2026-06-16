@@ -19,6 +19,7 @@ export default function AdminScreen() {
   useThemeUpdate();
   const styles = getStyles(COLORS);
   const router = useRouter();
+  const isStandaloneAdmin = process.env.EXPO_PUBLIC_APP_TYPE === 'admin';
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
@@ -373,7 +374,11 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
       <LinearGradient colors={COLORS.bgGradient} style={styles.loginContainer}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'center' }}>
            <StatusBar style="light" />
-           <TouchableOpacity style={styles.closeBtn} onPress={() => router.back()}><X color="#FFF" size={32} /></TouchableOpacity>
+           {!isStandaloneAdmin && (
+             <TouchableOpacity style={styles.closeBtn} onPress={() => router.back()}>
+               <X color="#FFF" size={32} />
+             </TouchableOpacity>
+           )}
            <View style={[styles.loginBox, SHADOWS.glowDark]}>
               <View style={styles.logoCircle}><ShieldCheck color="#FF453A" size={40} /></View>
               <Text style={styles.loginTitle}>Trung Tâm Điều Hành</Text>
@@ -389,7 +394,11 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
     <LinearGradient colors={COLORS.bgGradient} style={styles.container}>
       <StatusBar style="light" />
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><ChevronLeft color="#FF453A" size={28} /></TouchableOpacity>
+        {!isStandaloneAdmin && (
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <ChevronLeft color="#FF453A" size={28} />
+          </TouchableOpacity>
+        )}
         <Text style={styles.headerTitle}>ADMIN WORKSPACE</Text>
         <TouchableOpacity onPress={loadFirebaseData}><Text style={{color: COLORS.primary, fontWeight: 'bold'}}>Tải lại</Text></TouchableOpacity>
       </View>
