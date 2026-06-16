@@ -113,11 +113,7 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
   }, []);
 
   const hideBar = useCallback(() => {
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 130, ...SPRINGS.float }),
-      Animated.spring(barScale,   { toValue: 0.9, ...SPRINGS.snappy }),
-      Animated.timing(barOpacity, { toValue: 0,   duration: 180, useNativeDriver: true }),
-    ]).start();
+    // Giữ thanh tab bar luôn hiển thị, không tự động trượt xuống ẩn đi
   }, []);
 
   useEffect(() => {
