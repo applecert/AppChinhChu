@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Switch, Image, Modal } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Switch, Image, Modal, Animated } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -34,6 +34,33 @@ export default function AdminScreen() {
   // 🔴 TABS VÀ TÌM KIẾM KHÁCH HÀNG
   const [activeTab, setActiveTab] = useState('DASHBOARD'); 
   const [isMenuVisible, setIsMenuVisible] = useState(false);
+  const slideAnim = React.useRef(new Animated.Value(-300)).current;
+
+  const toggleMenu = (open: boolean) => {
+    if (open) {
+      setIsMenuVisible(true);
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(slideAnim, {
+        toValue: -300,
+        duration: 220,
+        useNativeDriver: true,
+      }).start(() => {
+        setIsMenuVisible(false);
+      });
+    }
+  };
+
+  const backdropOpacity = slideAnim.interpolate({
+    inputRange: [-300, 0],
+    outputRange: [0, 0.6],
+    extrapolate: 'clamp',
+  });
+
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [renderLimit, setRenderLimit] = useState(30);
 
@@ -1029,7 +1056,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
               <ChevronLeft color="#FF453A" size={28} />
             </TouchableOpacity>
           ) : null}
-          <TouchableOpacity onPress={() => setIsMenuVisible(true)} style={styles.menuBtn}>
+          <TouchableOpacity onPress={() => toggleMenu(true)} style={styles.menuBtn}>
             <Menu color="#FF453A" size={26} />
           </TouchableOpacity>
         </View>
@@ -2336,19 +2363,21 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
       <Modal
         visible={isMenuVisible}
         transparent={true}
-        animationType="fade"
-        onRequestClose={() => setIsMenuVisible(false)}
+        animationType="none"
+        onRequestClose={() => toggleMenu(false)}
       >
         <View style={styles.menuOverlayContainer}>
-          <TouchableOpacity 
-            style={styles.menuOverlayBg} 
-            activeOpacity={1} 
-            onPress={() => setIsMenuVisible(false)}
-          />
-          <View style={styles.menuDrawer}>
+          <Animated.View style={[styles.menuOverlayBg, { opacity: backdropOpacity }]}>
+            <TouchableOpacity 
+              style={{ flex: 1 }} 
+              activeOpacity={1} 
+              onPress={() => toggleMenu(false)}
+            />
+          </Animated.View>
+          <Animated.View style={[styles.menuDrawer, { transform: [{ translateX: slideAnim }] }]}>
             <View style={styles.menuHeader}>
               <Text style={styles.menuTitle}>DANH MỤC QUẢN TRỊ</Text>
-              <TouchableOpacity onPress={() => setIsMenuVisible(false)}>
+              <TouchableOpacity onPress={() => toggleMenu(false)}>
                 <X color="#FFF" size={24} />
               </TouchableOpacity>
             </View>
@@ -2364,7 +2393,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                       setActiveTab(tab.id);
                       setProductRenderLimit(30);
                       setRenderLimit(30);
-                      setIsMenuVisible(false);
+                      toggleMenu(false);
                     }} 
                     style={[styles.menuItem, isActive && styles.menuItemActive]}
                   >
@@ -2376,7 +2405,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                 );
               })}
             </ScrollView>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
     </LinearGradient>
@@ -2645,11 +2674,10 @@ const getStyles = (theme: typeof COLORS) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: '#000',
   },
   menuDrawer: {
-    width: '75%',
-    maxWidth: 300,
+    width: 300,
     height: '100%',
     backgroundColor: '#1C1C1E',
     borderRightWidth: 0.8,
