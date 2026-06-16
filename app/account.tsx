@@ -72,7 +72,7 @@ export default function AccountScreen() {
     try {
       if (isRegisterMode) {
         const cred = await createUserWithEmailAndPassword(auth, email, password);
-        const newUserData = { fullname, email: email.toLowerCase(), coins: 10000 };
+        const newUserData = { fullname, email: email.toLowerCase(), coins: 0 };
         await setDoc(doc(db, 'users', cred.user.uid), newUserData);
         fetch(GOOGLE_SHEET_WEBHOOK, { method: 'POST', body: JSON.stringify({ email, action: "Tạo Tài Khoản", amount: "0", status: "Thành công" }) }).catch(()=>{});
       } else {
@@ -277,7 +277,7 @@ export default function AccountScreen() {
           <Text style={styles.profileName}>{userData?.fullname || TXT.customerGuest}</Text>
           <Text style={styles.profileEmail}>{userData?.email}</Text>
           
-          <Text style={styles.creditsText}>• {userData?.coins ? userData.coins.toLocaleString('vi-VN') : '10.000'} credits</Text>
+          <Text style={styles.creditsText}>• {(userData?.coins ?? 0).toLocaleString('vi-VN')} credits</Text>
         </View>
 
         {/* MODERN UPGRADE CARD */}
