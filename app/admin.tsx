@@ -96,8 +96,8 @@ export default function AdminScreen() {
     return Number(vipExpire) || 0;
   };
 
-  const handleLoginAdmin = async (targetPin?: string) => {
-    const pinToUse = targetPin || pin;
+  const handleLoginAdmin = async (targetPin?: any) => {
+    const pinToUse = (typeof targetPin === 'string' ? targetPin : null) || pin;
     if (!pinToUse) return Alert.alert("Lỗi", "Nhập mã PIN");
     setIsVerifying(true);
     try {
