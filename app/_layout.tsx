@@ -401,31 +401,7 @@ export default function RootLayout() {
           <View style={styles.splashContent}>
 
 
-            {/* AMBIENT GLOW CIRCLES */}
-            <Animated.View 
-              pointerEvents="none" 
-              style={[
-                StyleSheet.absoluteFill, 
-                { 
-                  justifyContent: 'center', 
-                  alignItems: 'center',
-                  opacity: logoOpacity 
-                }
-              ]}
-            >
-              <Animated.View style={[
-                styles.ambientGlowCircle1,
-                {
-                  transform: [{ scale: glowScale }]
-                }
-              ]} />
-              <Animated.View style={[
-                styles.ambientGlowCircle2,
-                {
-                  transform: [{ scale: glowScale.interpolate({ inputRange: [0, 2], outputRange: [0, 2.2] }) }]
-                }
-              ]} />
-            </Animated.View>
+
 
             {/* Logo VSign Wrapper (Basic & Premium) */}
             <Animated.View style={[
@@ -478,24 +454,7 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
   },
-  ambientGlowCircle1: {
-    position: 'absolute',
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: 'rgba(10, 132, 255, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(10, 132, 255, 0.05)',
-  },
-  ambientGlowCircle2: {
-    position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: 'rgba(10, 132, 255, 0.04)',
-    borderWidth: 1,
-    borderColor: 'rgba(10, 132, 255, 0.08)',
-  },
+
   logoWrapper: {
     width: 220,
     height: 140,

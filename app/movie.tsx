@@ -261,7 +261,7 @@ export default function MovieScreen() {
     try {
       await Share.share({
         title: movie.name,
-        message: `Xem phim "${movie.name} (${movie.year})" cực hay tại RoPhim Cinema: https://ophim1.com/phim/${movie.slug}`,
+        message: `Xem phim "${movie.name} (${movie.year})" cực hay tại VPhim Cinema: https://ophim1.com/phim/${movie.slug}`,
       });
     } catch (error) {
       showToast('Đã sao chép link phim');
@@ -469,7 +469,7 @@ export default function MovieScreen() {
             <View style={styles.logoBadge}>
               <Play color="#000000" size={10} fill="#000000" style={{ marginLeft: 1 }} />
             </View>
-            <Text style={styles.logoText}>RoPhim</Text>
+            <Text style={styles.logoText}>VPhim</Text>
           </TouchableOpacity>
         </View>
 

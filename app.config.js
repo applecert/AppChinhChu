@@ -1,6 +1,6 @@
 const appType = process.env.EXPO_PUBLIC_APP_TYPE;
-const appName = appType === 'admin' ? "VSign Admin" : appType === 'movie' ? "RoPhim" : "VSign";
-const bundleId = appType === 'admin' ? "com.ipaviet.esign.admin" : appType === 'movie' ? "com.ipaviet.esign.movie" : "com.ipaviet.esign";
+const appName = appType === 'admin' ? "VSign Admin" : appType === 'movie' ? "VPhim" : "VSign";
+const bundleId = appType === 'admin' ? "com.ipaviet.admin" : appType === 'movie' ? "com.ipaviet.vphim" : "com.ipaviet.vsign";
 
 module.exports = {
   expo: {

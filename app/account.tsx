@@ -370,7 +370,7 @@ export default function AccountScreen() {
           <View style={styles.groupInside}>
             {renderRow(Palette, TXT.setupThemeRow, TXT.openLabel, '#8E8E93', false, false, () => navigateFromModal('/settings'))}
             <View style={styles.divider} />
-            {renderRow(Film, 'Rạp phim online', 'RoPhim', '#FFB822', false, false, () => navigateFromModal('/movie'))}
+            {renderRow(Film, 'Rạp phim online', 'VPhim', '#FFB822', false, false, () => navigateFromModal('/movie'))}
             <View style={styles.divider} />
             {renderRow(CloudDownload, TXT.cloudStorage, '5 GB', '#8E8E93', false, false)}
             <View style={styles.divider} />
