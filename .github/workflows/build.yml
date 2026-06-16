@@ -7,7 +7,7 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        app_type: [user, admin]
+        app_type: [user, admin, movie]
     name: Build iOS (${{ matrix.app_type }})
     env:
       EXPO_PUBLIC_APP_TYPE: ${{ matrix.app_type }}
