@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES, SHADOWS, useThemeUpdate } from '../constants/theme';
 
 // 🔴 ĐÃ CẬP NHẬT FULL BỘ ICON TỪ LUCIDE GIỐNG Y HỆT WEB CỦA SẾP
-import { X, ShieldCheck, ChevronLeft, CalendarPlus, UserX, LayoutDashboard, Ticket, Banknote, Users, Crown, Gem, Trash2, Box } from 'lucide-react-native';
+import { X, ShieldCheck, ChevronLeft, CalendarPlus, UserX, LayoutDashboard, Ticket, Banknote, Users, Crown, Gem, Trash2, Box, Search } from 'lucide-react-native';
 
 import { auth, db } from '../firebaseConfig';
 // Nhập thêm deleteDoc, serverTimestamp để xử lý Giftcode
@@ -35,6 +35,20 @@ export default function AdminScreen() {
   
   // 🔴 THÊM TAB DASHBOARD VÀ GIFTCODES
   const [activeTab, setActiveTab] = useState('DASHBOARD'); 
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [renderLimit, setRenderLimit] = useState(30);
+
+  const getFilteredUsers = () => {
+    let list = usersList;
+    if (memberSearchQuery.trim() !== '') {
+      const query = memberSearchQuery.toLowerCase().trim();
+      list = list.filter(u => 
+        (u.fullname || '').toLowerCase().includes(query) || 
+        (u.email || '').toLowerCase().includes(query)
+      );
+    }
+    return list;
+  }; 
 
   // Dữ liệu Web & Firebase
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -467,7 +481,28 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
         {activeTab === 'MEMBERS' && (
           <View>
             <Text style={styles.title}>CHỈNH SỬA VIP KHÁCH HÀNG ({usersList.length})</Text>
-            {usersList.map((u, i) => {
+            
+            {/* Thanh tìm kiếm khách hàng */}
+            <View style={[styles.searchBox, { marginBottom: 12 }]}>
+              <Search size={14} color={COLORS.textMuted} style={{ marginRight: 6 }} />
+              <TextInput 
+                style={styles.searchInputCompact}
+                placeholder="Tìm kiếm theo tên hoặc email..."
+                placeholderTextColor={COLORS.textMuted}
+                value={memberSearchQuery}
+                onChangeText={(text) => {
+                  setMemberSearchQuery(text);
+                  setRenderLimit(30);
+                }}
+              />
+              {memberSearchQuery !== '' && (
+                <TouchableOpacity onPress={() => setMemberSearchQuery('')} style={{ padding: 4 }}>
+                  <X size={14} color={COLORS.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {getFilteredUsers().slice(0, renderLimit).map((u, i) => {
               const expireMillis = getVipMillis(u.vipExpire);
               const isVipActive = expireMillis > Date.now();
               return (
@@ -489,6 +524,19 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                 </View>
               )
             })}
+
+            {getFilteredUsers().length > renderLimit && (
+              <TouchableOpacity 
+                style={[styles.actionBtn, { marginTop: 5, marginBottom: 20, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.02)' }]} 
+                onPress={() => setRenderLimit(prev => prev + 30)}
+              >
+                <Text style={styles.actionText}>Tải thêm khách hàng (+30)...</Text>
+              </TouchableOpacity>
+            )}
+
+            {getFilteredUsers().length === 0 && (
+              <Text style={{ color: '#888', textAlign: 'center', marginVertical: 20, fontSize: 12 }}>Không tìm thấy khách hàng nào.</Text>
+            )}
           </View>
         )}
 
@@ -941,6 +989,23 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
 
 const getStyles = (theme: typeof COLORS) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.background },
+  searchBox: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: theme.background === '#F4F4F6' ? 'rgba(0,0,0,0.04)' : 'rgba(0,0,0,0.3)', 
+    borderRadius: 8, 
+    borderWidth: 0.8, 
+    borderColor: theme.border, 
+    paddingHorizontal: 8, 
+    height: 38 
+  },
+  searchInputCompact: { 
+    flex: 1, 
+    color: theme.text, 
+    fontSize: 12, 
+    height: '100%', 
+    padding: 0 
+  },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Platform.OS === 'ios' ? 50 : 25, paddingHorizontal: 12, paddingBottom: 10, borderBottomWidth: 0.8, borderColor: theme.border },
   headerTitle: { color: theme.danger, fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
   backBtn: { padding: 4, marginLeft: -4 },
