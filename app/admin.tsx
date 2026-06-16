@@ -88,6 +88,7 @@ export default function AdminScreen() {
   const [customFormName, setCustomFormName] = useState('');
   const [customFormCat, setCustomFormCat] = useState('');
   const [customFormStock, setCustomFormStock] = useState('999');
+  const [customFormImportPrice, setCustomFormImportPrice] = useState('');
   const [customFormPrice, setCustomFormPrice] = useState('');
   const [customFormFakePrice, setCustomFormFakePrice] = useState('');
   const [customFormIcon, setCustomFormIcon] = useState('');
@@ -409,6 +410,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                 id: k,
                 name: conf.name,
                 price: parseInt(conf.price) || 0,
+                importPrice: conf.importPrice !== undefined && conf.importPrice !== "" ? parseInt(conf.importPrice) : 0,
                 cat: conf.cat || 'Khác',
                 stock: conf.stock !== "" && conf.stock !== undefined ? parseInt(conf.stock) : 0
               });
@@ -479,7 +481,8 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
             isHidden: conf.isHidden || false,
             cat: cat,
             stock: conf.stock !== undefined ? conf.stock : '',
-            desc: conf.desc || ''
+            desc: conf.desc || '',
+            importPrice: conf.importPrice !== undefined ? conf.importPrice : (rawP?.importPrice || '')
           });
         }
       });
@@ -793,10 +796,11 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
     if (found) {
       setCustomFormName(found.name || '');
       setCustomFormCat(found.cat || 'Khác');
-      setCustomFormPrice(String(found.price || 0));
-      const fakePriceVal = Math.round((found.price || 0) * 1.3);
+      setCustomFormImportPrice(String(found.price || 0));
+      setCustomFormPrice(String(Math.round(found.price * 1.15)));
+      const fakePriceVal = Math.round((found.price || 0) * 1.4);
       setCustomFormFakePrice(String(fakePriceVal));
-      Alert.alert("Tìm thấy", `Sản phẩm: ${found.name}\nDanh mục: ${found.cat}\nGiá gốc: ${found.price.toLocaleString()}đ`);
+      Alert.alert("Tìm thấy", `Sản phẩm: ${found.name}\nDanh mục: ${found.cat}\nGiá gốc (Giá nhập): ${found.price.toLocaleString()}đ`);
     } else {
       Alert.alert("Thông báo", "Không tìm thấy sản phẩm trong KingMMO API. Bạn có thể tự nhập tay.");
     }
@@ -1485,9 +1489,18 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                     <View style={{ gap: 6 }}>
                       <View style={{ flexDirection: 'row', gap: 6 }}>
                         <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#8E8E93', fontSize: 10, marginBottom: 2 }}>Giá nhập (đ):</Text>
+                          <TextInput 
+                            style={[styles.addInput, { height: 32, marginBottom: 0, paddingHorizontal: 6, fontSize: 11 }]}
+                            keyboardType="numeric"
+                            value={String(conf.importPrice !== undefined ? conf.importPrice : (p.importPrice !== undefined ? p.importPrice : (p.price || 0)))}
+                            onChangeText={(txt) => updateProductConfig(id, 'importPrice', parseInt(txt) || 0)}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
                           <Text style={{ color: '#8E8E93', fontSize: 10, marginBottom: 2 }}>Giá bán (đ):</Text>
                           <TextInput 
-                            style={[styles.addInput, { height: 32, marginBottom: 0, paddingHorizontal: 8, fontSize: 11 }]}
+                            style={[styles.addInput, { height: 32, marginBottom: 0, paddingHorizontal: 6, fontSize: 11 }]}
                             keyboardType="numeric"
                             value={String(conf.price !== undefined ? conf.price : (p.price || 0))}
                             onChangeText={(txt) => updateProductConfig(id, 'price', parseInt(txt) || 0)}
@@ -1496,9 +1509,9 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                         <View style={{ flex: 1 }}>
                           <Text style={{ color: '#8E8E93', fontSize: 10, marginBottom: 2 }}>Giá gạch (đ):</Text>
                           <TextInput 
-                            style={[styles.addInput, { height: 32, marginBottom: 0, paddingHorizontal: 8, fontSize: 11 }]}
+                            style={[styles.addInput, { height: 32, marginBottom: 0, paddingHorizontal: 6, fontSize: 11 }]}
                             keyboardType="numeric"
-                            placeholder="Để trống"
+                            placeholder="Mặc định"
                             placeholderTextColor={COLORS.textMuted}
                             value={String(conf.fakePrice || '')}
                             onChangeText={(txt) => updateProductConfig(id, 'fakePrice', parseInt(txt) || '')}
@@ -1757,7 +1770,18 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                 </View>
               </View>
 
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Giá nhập (đ):</Text>
+                  <TextInput 
+                    style={styles.addInput}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={customFormImportPrice}
+                    onChangeText={setCustomFormImportPrice}
+                  />
+                </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Giá bán (đ) *:</Text>
                   <TextInput 
@@ -1774,7 +1798,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                   <TextInput 
                     style={styles.addInput}
                     keyboardType="numeric"
-                    placeholder="Tính tự động +30%"
+                    placeholder="Tự động"
                     placeholderTextColor={COLORS.textMuted}
                     value={customFormFakePrice}
                     onChangeText={setCustomFormFakePrice}
@@ -1817,6 +1841,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                       name: customFormName,
                       cat: customFormCat || 'Khác',
                       price: parseInt(customFormPrice) || 0,
+                      importPrice: parseInt(customFormImportPrice) || 0,
                       fakePrice: customFormFakePrice ? parseInt(customFormFakePrice) : Math.round((parseInt(customFormPrice) || 0) * 1.3),
                       icon: customFormIcon,
                       stock: parseInt(customFormStock) || 999,
@@ -1832,6 +1857,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                       name: customFormName,
                       cat: customFormCat || 'Khác',
                       price: parseInt(customFormPrice) || 0,
+                      importPrice: parseInt(customFormImportPrice) || 0,
                       stock: parseInt(customFormStock) || 999
                     },
                     ...prev
@@ -1844,6 +1870,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                   setCustomFormName('');
                   setCustomFormCat('');
                   setCustomFormStock('999');
+                  setCustomFormImportPrice('');
                   setCustomFormPrice('');
                   setCustomFormFakePrice('');
                   setCustomFormIcon('');
