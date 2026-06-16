@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Switch, Image } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Switch, Image, Modal } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES, SHADOWS, useThemeUpdate } from '../constants/theme';
 
 // 🔴 ĐÃ CẬP NHẬT FULL BỘ ICON TỪ LUCIDE GIỐNG Y HỆT WEB CỦA SẾP
-import { X, ShieldCheck, ChevronLeft, CalendarPlus, UserX, LayoutDashboard, Ticket, Banknote, Users, Crown, Gem, Trash2, Box, Search } from 'lucide-react-native';
+import { X, ShieldCheck, ChevronLeft, CalendarPlus, UserX, LayoutDashboard, Ticket, Banknote, Users, Crown, Gem, Trash2, Box, Search, PlusCircle, Layers, Flame, RefreshCw } from 'lucide-react-native';
 
 import { auth, db } from '../firebaseConfig';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -31,39 +31,69 @@ export default function AdminScreen() {
   const [adminPassword, setAdminPassword] = useState('');
   const [firebaseAuthenticated, setFirebaseAuthenticated] = useState(false);
   
-  useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (user && user.email?.toLowerCase() === 'mquitran@gmail.com') {
-        setFirebaseAuthenticated(true);
-        // Sau khi Firebase Auth tải xong phiên đăng nhập hợp lệ, chạy PIN tự động nếu đã lưu
-        AsyncStorage.getItem('@admin_pin').then(savedPin => {
-          if (savedPin) {
-            handleLoginAdmin(savedPin);
-          }
-        });
-      } else {
-        setFirebaseAuthenticated(false);
-      }
-    });
-    return unsubscribeAuth;
-  }, []);
-  
-  // 🔴 THÊM TAB DASHBOARD VÀ GIFTCODES
+  // 🔴 TABS VÀ TÌM KIẾM KHÁCH HÀNG
   const [activeTab, setActiveTab] = useState('DASHBOARD'); 
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [renderLimit, setRenderLimit] = useState(30);
 
-  const getFilteredUsers = () => {
-    let list = usersList;
-    if (memberSearchQuery.trim() !== '') {
-      const query = memberSearchQuery.toLowerCase().trim();
-      list = list.filter(u => 
-        (u.fullname || '').toLowerCase().includes(query) || 
-        (u.email || '').toLowerCase().includes(query)
-      );
-    }
-    return list;
-  }; 
+  // MMO states
+  const [mmoRawProducts, setMmoRawProducts] = useState<any[]>([]);
+  const [mmoConfigState, setMmoConfigState] = useState<any>({});
+  const [categoryMetadataMap, setCategoryMetadataMap] = useState<any>({});
+  const [allMmoOrders, setAllMmoOrders] = useState<any[]>([]);
+  const [transactionsList, setTransactionsList] = useState<any[]>([]);
+  
+  const [selectedMmoOrders, setSelectedMmoOrders] = useState<Set<number>>(new Set());
+  const [selectedConfigs, setSelectedConfigs] = useState<Set<string>>(new Set());
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [activeMmoOrderFilter, setActiveMmoOrderFilter] = useState<'PENDING_PAID' | 'COMPLETED' | 'ALL'>('PENDING_PAID');
+  
+  // Category tab state
+  const [selectedCatName, setSelectedCatName] = useState<string | null>(null);
+  const [catManagerIcon, setCatManagerIcon] = useState('');
+  const [catManagerOrder, setCatManagerOrder] = useState('999');
+  const [catManagerHot, setCatManagerHot] = useState(false);
+  const [catManagerHidden, setCatManagerHidden] = useState(false);
+
+  // Form custom product state
+  const [checkKingMmoId, setCheckKingMmoId] = useState('');
+  const [customFormName, setCustomFormName] = useState('');
+  const [customFormCat, setCustomFormCat] = useState('');
+  const [customFormStock, setCustomFormStock] = useState('999');
+  const [customFormPrice, setCustomFormPrice] = useState('');
+  const [customFormFakePrice, setCustomFormFakePrice] = useState('');
+  const [customFormIcon, setCustomFormIcon] = useState('');
+  const [customFormDesc, setCustomFormDesc] = useState('');
+
+  // Form Deal Hot state
+  const [dealTargetId, setDealTargetId] = useState('');
+  const [dealName, setDealName] = useState('');
+  const [dealPrice, setDealPrice] = useState('');
+  const [dealEndTime, setDealEndTime] = useState('');
+  const [dealIcon, setDealIcon] = useState('');
+
+  // Advanced User Edit Modal state
+  const [isUserModalVisible, setIsUserModalVisible] = useState(false);
+  const [editUserUid, setEditUserUid] = useState('');
+  const [editUserEmail, setEditUserEmail] = useState('');
+  const [editUserCoins, setEditUserCoins] = useState('');
+  const [editUserVipDate, setEditUserVipDate] = useState<Date | null>(null);
+  const [showEditDatePicker, setShowEditDatePicker] = useState(false);
+
+  // Manual Fulfill Modal state
+  const [isManualModalVisible, setIsManualModalVisible] = useState(false);
+  const [manualFulfillRow, setManualFulfillRow] = useState<number | null>(null);
+  const [manualAccountText, setManualAccountText] = useState('');
+
+  // Filter & Search states for Config tab
+  const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [productCatFilter, setProductCatFilter] = useState('all');
+  const [productRenderLimit, setProductRenderLimit] = useState(30);
+
+  // Bulk actions states
+  const [bulkPercent, setBulkPercent] = useState('');
+  const [bulkPriceTarget, setBulkPriceTarget] = useState<'price' | 'fakePrice'>('price');
+  const [bulkCatInput, setBulkCatInput] = useState('');
 
   // Dữ liệu Web & Firebase
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -96,7 +126,7 @@ export default function AdminScreen() {
   const [registeredDeviceCount, setRegisteredDeviceCount] = useState(0);
   
   // State Hẹn giờ gửi
-  const [scheduleDelay, setScheduleDelay] = useState('0'); // '0'=ngay, '5'=5m, '15'=15m, '60'=1h, '180'=3h, '1440'=1d, 'custom'=tự chọn
+  const [scheduleDelay, setScheduleDelay] = useState('0'); 
   const [customDate, setCustomDate] = useState(new Date(Date.now() + 10 * 60 * 1000));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [pickerMode, setPickerMode] = useState<'date' | 'time'>('date');
@@ -113,10 +143,41 @@ export default function AdminScreen() {
 
   // State Giftcode
   const [gcName, setGcName] = useState('');
-  const [gcType, setGcType] = useState('coins'); // coins, vip, discount
+  const [gcType, setGcType] = useState('coins'); 
   const [gcValue, setGcValue] = useState('');
   const [gcLimit, setGcLimit] = useState('100');
   const [isCreatingGc, setIsCreatingGc] = useState(false);
+
+  const TABS = [
+    { id: 'DASHBOARD', label: 'TỔNG QUAN', icon: LayoutDashboard },
+    { id: 'MEMBERS', label: 'KHÁCH HÀNG', icon: Users },
+    { id: 'TRANSACTIONS', label: 'LỊCH SỬ NẠP', icon: Banknote },
+    { id: 'MALL_ORDERS', label: 'DUYỆT ĐƠN MALL', icon: Ticket },
+    { id: 'PRODUCTS', label: 'KHO SẢN PHẨM', icon: Box },
+    { id: 'CATEGORIES', label: 'DANH MỤC', icon: Layers },
+    { id: 'ADD_PRODUCT', label: 'THÊM SP', icon: PlusCircle },
+    { id: 'DEAL_HOT', label: 'DEAL HOT', icon: Flame },
+    { id: 'KHOTK', label: 'KHO APPLE ID', icon: Box },
+    { id: 'GIFTCODES', label: 'GIFTCODE', icon: Ticket },
+    { id: 'PUSH', label: 'THÔNG BÁO PUSH', icon: Users },
+    { id: 'SETTINGS', label: 'CÀI ĐẶT', icon: X }
+  ];
+
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (user && user.email?.toLowerCase() === 'mquitran@gmail.com') {
+        setFirebaseAuthenticated(true);
+        AsyncStorage.getItem('@admin_pin').then(savedPin => {
+          if (savedPin) {
+            handleLoginAdmin(savedPin);
+          }
+        });
+      } else {
+        setFirebaseAuthenticated(false);
+      }
+    });
+    return unsubscribeAuth;
+  }, []);
 
   const getVipMillis = (vipExpire: any) => {
     if (!vipExpire) return 0;
@@ -137,59 +198,35 @@ export default function AdminScreen() {
           setIsVerifying(false);
           return Alert.alert("Lỗi", "Vui lòng nhập mật khẩu tài khoản Admin Firebase");
         }
-        // Chỉ chạy đăng nhập khi người dùng thao tác nhập thủ công
         if (!targetPin) {
           await signInWithEmailAndPassword(auth, adminEmail.trim(), adminPassword);
         }
       }
 
       // 2. Xác thực PIN với Google Sheets API
-      const res = await fetch(`${SCRIPT_URL}?action=get_admin_data&pin=${encodeURIComponent(pinToUse)}`);
+      const res = await fetch(`${SCRIPT_URL}?action=verify_pin&pin=${encodeURIComponent(pinToUse)}`);
       const json = await res.json();
-      if (json.success) { 
-        setDataKho(json.dataKho || []); 
-        
-        // 🔴 BÓC TÁCH DOANH THU & KHO Y HỆT WEB CỦA SẾP
-        let totalRev = 0;
-        let tempInv = { 'Spotify': {total: 0, available: 0, sold: 0}, 'Netflix': {total: 0, available: 0, sold: 0}, 'CapCut': {total: 0, available: 0, sold: 0} };
-        
-        if (json.dataThuNgan) {
-            for(let i = 1; i < json.dataThuNgan.length; i++) {
-                let r = json.dataThuNgan[i];
-                if(r[4] === 'CLAIMED' || r[4] === 'PAID') totalRev += (parseInt(r[2]) || 0);
-            }
-        }
-        if (json.dataKho) {
-            for(let i = 1; i < json.dataKho.length; i++) {
-                let r = json.dataKho[i]; let type = r[0]; let status = r[2];
-                if(tempInv[type as keyof typeof tempInv]) {
-                    tempInv[type as keyof typeof tempInv].total++;
-                    if(status === 'SẴN SÀNG') tempInv[type as keyof typeof tempInv].available++; 
-                    else tempInv[type as keyof typeof tempInv].sold++;
-                }
-            }
-        }
-        
-        setStats(prev => ({ ...prev, revenue: totalRev }));
-        setInvStats(tempInv);
-        setIsAuthenticated(true); 
+      if (json.success) {
+        setIsAuthenticated(true);
         if (targetPin) {
           setPin(targetPin);
         }
         await AsyncStorage.setItem('@admin_pin', pinToUse);
-        loadFirebaseData(pinToUse); 
-      } else { 
-        Alert.alert("Lỗi", "Sai mã PIN!"); 
+        await loadFirebaseData(pinToUse);
+      } else {
+        Alert.alert("Lỗi", "Sai mã PIN!");
         await AsyncStorage.removeItem('@admin_pin');
       }
-    } catch (e: any) { 
-      Alert.alert("Lỗi xác thực", e.message || "Mật khẩu Admin hoặc mã PIN không chính xác!"); 
+    } catch (e: any) {
+      Alert.alert("Lỗi xác thực", e.message || "Mật khẩu Admin hoặc mã PIN không chính xác!");
     }
     setIsVerifying(false);
   };
 
   const loadFirebaseData = async (activePin?: string) => {
     const pinToUse = activePin || pin;
+    
+    // 1. Tải cấu hình settings/config từ Firestore
     const snapConfig = await getDoc(doc(db, 'settings', 'config'));
     if (snapConfig.exists()) {
       const data = snapConfig.data();
@@ -208,7 +245,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
       }));
     }
     
-    // Tải Khách hàng & Tính tổng
+    // 2. Tải Khách hàng & Tính tổng
     const usersSnap = await getDocs(collection(db, 'users'));
     let arr: any[] = [];
     let tUsers = 0, tVips = 0, tCoins = 0;
@@ -225,13 +262,13 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
     setUsersList(arr);
     setStats(prev => ({ ...prev, totalUsers: tUsers, totalVips: tVips, totalCoins: tCoins }));
 
-    // Tải Giftcodes
+    // 3. Tải Giftcodes
     const gcSnap = await getDocs(collection(db, 'giftcodes'));
     let gcArr: any[] = [];
     gcSnap.forEach(d => gcArr.push({ id: d.id, ...d.data() }));
     setGiftcodesList(gcArr);
 
-    // Tải số lượng thiết bị đăng ký nhận thông báo từ Google Sheet
+    // 4. Tải số lượng thiết bị đăng ký nhận thông báo từ Google Sheet
     try {
       const resCount = await fetch(`${SCRIPT_URL}?action=get_push_tokens_count&pin=${encodeURIComponent(pinToUse)}`);
       const jsonCount = await resCount.json();
@@ -242,7 +279,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
       console.warn("Failed to fetch push tokens count:", e);
     }
 
-    // Tải danh sách thông báo đã hẹn giờ
+    // 5. Tải danh sách thông báo đã hẹn giờ
     try {
       const resSched = await fetch(`${SCRIPT_URL}?action=get_scheduled_pushes&pin=${encodeURIComponent(pinToUse)}`);
       const jsonSched = await resSched.json();
@@ -251,6 +288,489 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
       }
     } catch (e) {
       console.warn("Failed to fetch scheduled pushes:", e);
+    }
+
+    // 6. Tải Lịch sử nạp & Doanh thu từ Google Sheet (action=get_admin_data)
+    try {
+      const resData = await fetch(`${SCRIPT_URL}?action=get_admin_data&pin=${encodeURIComponent(pinToUse)}`);
+      const data = await resData.json(); 
+      if (data.success) { 
+        let totalRev = 0; 
+        let txs: any[] = [];
+        let tempInv = { 'Spotify': {total: 0, available: 0, sold: 0}, 'Netflix': {total: 0, available: 0, sold: 0}, 'CapCut': {total: 0, available: 0, sold: 0} };
+
+        if (data.dataThuNgan && data.dataThuNgan.length > 1) {
+          for(let i = 1; i < data.dataThuNgan.length; i++) {
+            let r = data.dataThuNgan[i]; 
+            if(r[4] === 'CLAIMED' || r[4] === 'PAID') totalRev += (parseInt(r[2]) || 0);
+            txs.push({ orderId: r[0], uid: r[1], amount: parseInt(r[2]) || 0, coins: parseInt(r[3]) || 0, status: r[4], time: r[5] });
+          }
+        }
+
+        if (data.dataKho) {
+          setDataKho(data.dataKho || []); 
+          for(let i = 1; i < data.dataKho.length; i++) {
+            let r = data.dataKho[i]; let type = r[0]; let status = r[2];
+            if(tempInv[type as keyof typeof tempInv]) {
+              tempInv[type as keyof typeof tempInv].total++;
+              if(status === 'SẴN SÀNG') tempInv[type as keyof typeof tempInv].available++; 
+              else tempInv[type as keyof typeof tempInv].sold++;
+            }
+          }
+        }
+
+        setStats(prev => ({ ...prev, revenue: totalRev }));
+        setInvStats(tempInv);
+        setTransactionsList(txs.reverse()); 
+      }
+    } catch (e) {
+      console.warn("Failed to fetch transactions list:", e);
+    }
+
+    // 7. Tải Đơn hàng Mall (action=admin_get_all_mmo_orders)
+    try {
+      const resMMO = await fetch(`${SCRIPT_URL}?action=admin_get_all_mmo_orders&pin=${encodeURIComponent(pinToUse)}`);
+      const dataMMO = await resMMO.json();
+      if (dataMMO.success) {
+        setAllMmoOrders(dataMMO.data || []);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch MMO orders:", e);
+    }
+
+    // 8. Tải Kho sản phẩm & Cấu hình MMO (action=get_kingmmo_products)
+    try {
+      const resP = await fetch(`${SCRIPT_URL}?action=get_kingmmo_products`);
+      const dataP = await resP.json();
+      if (dataP.success) {
+        let rawProducts = dataP.kingmmoProducts || [];
+        let configs = dataP.configs || {};
+        let configState: any = {};
+        let catMap: any = {};
+        
+        // Phân loại cấu hình
+        Object.keys(configs).forEach(k => {
+          if (k.startsWith('CAT___')) {
+            let cName = k.replace('CAT___', '');
+            catMap[cName] = {
+              icon: configs[k].icon || '',
+              order: configs[k].stock !== "" && configs[k].stock !== undefined ? parseInt(configs[k].stock) : 999,
+              hot: configs[k].desc === 'HOT',
+              hidden: configs[k].isHidden === true || String(configs[k].isHidden).toLowerCase() === "true"
+            };
+          } else if (k === 'DEAL___HOT') {
+            configState[k] = configs[k];
+            // Đổ cấu hình Deal Hot
+            setDealTargetId(configs[k].cat || '');
+            setDealName(configs[k].name || '');
+            setDealPrice(String(configs[k].price || ''));
+            setDealEndTime(configs[k].desc || '');
+            setDealIcon(configs[k].icon || '');
+          } else {
+            configState[k] = configs[k];
+          }
+        });
+        
+        // Map hàng custom
+        let apiIds = new Set(rawProducts.map((p: any) => String(p.id)));
+        Object.keys(configs).forEach(k => {
+          if (!k.startsWith('CAT___') && k !== 'DEAL___HOT') {
+            let conf = configs[k];
+            if (!apiIds.has(String(k)) && conf.name) {
+              rawProducts.unshift({
+                id: k,
+                name: conf.name,
+                price: parseInt(conf.price) || 0,
+                cat: conf.cat || 'Khác',
+                stock: conf.stock !== "" && conf.stock !== undefined ? parseInt(conf.stock) : 0
+              });
+            }
+          }
+        });
+        
+        setMmoRawProducts(rawProducts);
+        setMmoConfigState(configState);
+        setCategoryMetadataMap(catMap);
+        setHasUnsavedChanges(false);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch MMO products catalog:", e);
+    }
+  };
+
+  // Helpers to update config states
+  const updateProductConfig = (id: string, key: string, val: any) => {
+    setMmoConfigState((prev: any) => {
+      const next = { ...prev };
+      if (!next[id]) next[id] = {};
+      next[id][key] = val;
+      return next;
+    });
+    setHasUnsavedChanges(true);
+  };
+
+  const updateCategoryConfig = (cName: string, key: string, val: any) => {
+    setCategoryMetadataMap((prev: any) => {
+      const next = { ...prev };
+      if (!next[cName]) next[cName] = {};
+      next[cName][key] = val;
+      return next;
+    });
+    setHasUnsavedChanges(true);
+  };
+
+  const saveCategorySettings = () => {
+    if (!selectedCatName) return;
+    updateCategoryConfig(selectedCatName, 'icon', catManagerIcon);
+    updateCategoryConfig(selectedCatName, 'order', parseInt(catManagerOrder) || 999);
+    updateCategoryConfig(selectedCatName, 'hot', catManagerHot);
+    updateCategoryConfig(selectedCatName, 'hidden', catManagerHidden);
+    Alert.alert("Thành công", "Đã lưu cấu hình danh mục locally. Hãy nhấn nút Lưu máy chủ ở cuối trang để gửi lên Sheets.");
+  };
+
+  // Google Sheets config sync
+  const saveAllConfigsToServer = async () => {
+    setIsVerifying(true);
+    try {
+      const payload: any[] = [];
+      
+      // 1. Thêm tất cả cấu hình sản phẩm
+      Object.keys(mmoConfigState).forEach(k => {
+        if (k !== 'DEAL___HOT' && !k.startsWith('CAT___')) {
+          const conf = mmoConfigState[k];
+          const rawP = mmoRawProducts.find(p => String(p.id) === String(k));
+          const name = conf.name || rawP?.name || '';
+          const cat = conf.cat || rawP?.cat || 'Khác';
+          
+          payload.push({
+            id: k,
+            name: name,
+            price: conf.price !== undefined ? conf.price : (rawP?.price || 0),
+            fakePrice: conf.fakePrice || '',
+            icon: conf.icon || '',
+            isHidden: conf.isHidden || false,
+            cat: cat,
+            stock: conf.stock !== undefined ? conf.stock : '',
+            desc: conf.desc || ''
+          });
+        }
+      });
+      
+      // 2. Thêm cấu hình danh mục
+      Object.keys(categoryMetadataMap).forEach(cName => {
+        const cat = categoryMetadataMap[cName];
+        payload.push({
+          id: `CAT___${cName}`,
+          name: cName,
+          price: '',
+          fakePrice: '',
+          icon: cat.icon || '',
+          isHidden: cat.hidden || false,
+          cat: '',
+          stock: cat.order !== undefined ? cat.order : 999,
+          desc: cat.hot ? 'HOT' : ''
+        });
+      });
+      
+      // 3. Thêm cấu hình Deal Hot nếu có
+      if (mmoConfigState['DEAL___HOT']) {
+        const deal = mmoConfigState['DEAL___HOT'];
+        payload.push({
+          id: 'DEAL___HOT',
+          name: deal.name || '',
+          price: deal.price || 0,
+          fakePrice: '',
+          icon: deal.icon || '',
+          isHidden: false,
+          cat: deal.cat || '', 
+          stock: '',
+          desc: deal.desc || '' 
+        });
+      }
+
+      const response = await fetch(`${SCRIPT_URL}?action=admin_save_mmo_config&pin=${encodeURIComponent(pin)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `configs=${encodeURIComponent(JSON.stringify(payload))}`
+      });
+      
+      const json = await response.json();
+      if (json.success) {
+        Alert.alert("Thành công", "Đã lưu toàn bộ cấu hình lên máy chủ!");
+        setHasUnsavedChanges(false);
+        loadFirebaseData();
+      } else {
+        Alert.alert("Lỗi", json.error || "Không thể lưu cấu hình.");
+      }
+    } catch (error: any) {
+      Alert.alert("Lỗi kết nối", error.message || "Không thể lưu cấu hình lên máy chủ.");
+    }
+    setIsVerifying(false);
+  };
+
+  // Mall orders handling functions
+  const fulfillOrderAPI = async (row: number, productId: string, amount: number) => {
+    setIsVerifying(true);
+    try {
+      const res = await fetch(`${SCRIPT_URL}?action=admin_fulfill_kingmmo&pin=${encodeURIComponent(pin)}&row=${row}&productId=${productId}&amount=${amount}`);
+      const json = await res.json();
+      if (json.success) {
+        Alert.alert("Thành công", "Đã duyệt đơn hàng thành công!");
+        loadFirebaseData();
+      } else {
+        Alert.alert("Lỗi", json.error || "Duyệt đơn thất bại");
+      }
+    } catch (e: any) {
+      Alert.alert("Lỗi kết nối", e.message);
+    }
+    setIsVerifying(false);
+  };
+
+  const fulfillOrderManual = async (row: number, accountData: string) => {
+    if (!accountData.trim()) return Alert.alert("Lỗi", "Nhập thông tin tài khoản");
+    setIsVerifying(true);
+    try {
+      const response = await fetch(`${SCRIPT_URL}?action=admin_manual_fulfill&pin=${encodeURIComponent(pin)}&row=${row}&accountData=${encodeURIComponent(accountData)}`);
+      const json = await response.json();
+      if (json.success) {
+        Alert.alert("Thành công", "Đã trả acc thủ công thành công!");
+        setIsManualModalVisible(false);
+        setManualAccountText('');
+        loadFirebaseData();
+      } else {
+        Alert.alert("Lỗi", json.error || "Duyệt đơn thất bại");
+      }
+    } catch (e: any) {
+      Alert.alert("Lỗi kết nối", e.message);
+    }
+    setIsVerifying(false);
+  };
+
+  const deleteOrder = async (row: number) => {
+    Alert.alert("Cảnh báo", "Bạn có chắc chắn muốn xóa đơn hàng này khỏi danh sách?", [
+      { text: "Hủy", style: "cancel" },
+      { text: "Xóa", style: "destructive", onPress: async () => {
+          setIsVerifying(true);
+          try {
+            const res = await fetch(`${SCRIPT_URL}?action=admin_delete_mmo_order&pin=${encodeURIComponent(pin)}&row=${row}`);
+            const json = await res.json();
+            if (json.success) {
+              Alert.alert("Thành công", "Đã xóa đơn hàng!");
+              loadFirebaseData();
+            } else {
+              Alert.alert("Lỗi", json.error || "Xóa đơn thất bại");
+            }
+          } catch (e: any) {
+            Alert.alert("Lỗi kết nối", e.message);
+          }
+          setIsVerifying(false);
+        }
+      }
+    ]);
+  };
+
+  const bulkFulfillOrders = async () => {
+    if (selectedMmoOrders.size === 0) {
+      return Alert.alert("Thông báo", "Vui lòng chọn ít nhất một đơn hàng để duyệt.");
+    }
+    Alert.alert(
+      "Xác nhận duyệt",
+      `Duyệt tự động ${selectedMmoOrders.size} đơn hàng đã chọn qua API KingMMO?`,
+      [
+        { text: "Hủy", style: "cancel" },
+        { text: "Đồng ý", onPress: async () => {
+            setIsVerifying(true);
+            let successCount = 0;
+            let failCount = 0;
+            for (const row of selectedMmoOrders) {
+              const order = allMmoOrders.find(o => o.row === row);
+              if (order) {
+                try {
+                  const res = await fetch(`${SCRIPT_URL}?action=admin_fulfill_kingmmo&pin=${encodeURIComponent(pin)}&row=${row}&productId=${order.productId}&amount=${order.amount}`);
+                  const json = await res.json();
+                  if (json.success) successCount++;
+                  else failCount++;
+                } catch (e) {
+                  failCount++;
+                }
+              }
+            }
+            Alert.alert("Kết quả", `Duyệt hàng loạt thành công: ${successCount} đơn. Thất bại: ${failCount} đơn.`);
+            setSelectedMmoOrders(new Set());
+            loadFirebaseData();
+          }
+        }
+      ]
+    );
+  };
+
+  const toggleSelectOrder = (row: number) => {
+    setSelectedMmoOrders(prev => {
+      const next = new Set(prev);
+      if (next.has(row)) next.delete(row);
+      else next.add(row);
+      return next;
+    });
+  };
+
+  const toggleSelectAllOrders = () => {
+    const filtered = getFilteredMmoOrders();
+    const allSelected = filtered.every(o => selectedMmoOrders.has(o.row));
+    setSelectedMmoOrders(prev => {
+      const next = new Set(prev);
+      filtered.forEach(o => {
+        if (allSelected) next.delete(o.row);
+        else next.add(o.row);
+      });
+      return next;
+    });
+  };
+
+  const getFilteredMmoOrders = () => {
+    let list = allMmoOrders;
+    if (memberSearchQuery.trim() !== '') {
+      const q = memberSearchQuery.toLowerCase().trim();
+      list = list.filter(o => 
+        String(o.orderId).toLowerCase().includes(q) || 
+        String(o.uid).toLowerCase().includes(q) ||
+        String(o.productName).toLowerCase().includes(q)
+      );
+    }
+    if (activeMmoOrderFilter === 'PENDING_PAID') {
+      return list.filter(o => o.status === 'PENDING' && o.isPaid);
+    } else if (activeMmoOrderFilter === 'COMPLETED') {
+      return list.filter(o => o.status === 'COMPLETED');
+    }
+    return list;
+  };
+
+  const getFilteredMmoProducts = () => {
+    let list = mmoRawProducts;
+    if (productCatFilter !== 'all') {
+      list = list.filter(p => String(p.cat).toLowerCase() === productCatFilter.toLowerCase());
+    }
+    if (productSearchQuery.trim() !== '') {
+      const q = productSearchQuery.toLowerCase().trim();
+      list = list.filter(p => 
+        String(p.name).toLowerCase().includes(q) || 
+        String(p.id).toLowerCase().includes(q) ||
+        String(p.cat).toLowerCase().includes(q)
+      );
+    }
+    return list;
+  };
+
+  const getFilteredUsers = () => {
+    if (!memberSearchQuery.trim()) return usersList;
+    const q = memberSearchQuery.toLowerCase().trim();
+    return usersList.filter(u => 
+      String(u.fullname || '').toLowerCase().includes(q) || 
+      String(u.email || '').toLowerCase().includes(q) || 
+      String(u.id || '').toLowerCase().includes(q)
+    );
+  };
+
+  const toggleSelectConfig = (id: string) => {
+    setSelectedConfigs(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllConfigs = () => {
+    const filtered = getFilteredMmoProducts().slice(0, productRenderLimit);
+    const allSelected = filtered.every(p => selectedConfigs.has(String(p.id)));
+    setSelectedConfigs(prev => {
+      const next = new Set(prev);
+      filtered.forEach(p => {
+        const id = String(p.id);
+        if (allSelected) next.delete(id);
+        else next.add(id);
+      });
+      return next;
+    });
+  };
+
+  const applyBulkDiscount = (direction: 'up' | 'down') => {
+    const percent = parseFloat(bulkPercent);
+    if (isNaN(percent) || percent <= 0) {
+      return Alert.alert("Lỗi", "Vui lòng nhập phần trăm hợp lệ.");
+    }
+    if (selectedConfigs.size === 0) {
+      return Alert.alert("Thông báo", "Vui lòng tích chọn sản phẩm cần đổi giá.");
+    }
+    const factor = direction === 'up' ? (1 + percent / 100) : (1 - percent / 100);
+    selectedConfigs.forEach(id => {
+      const rawP = mmoRawProducts.find(p => String(p.id) === String(id));
+      const conf = mmoConfigState[id] || {};
+      if (bulkPriceTarget === 'price') {
+        const currentPrice = conf.price !== undefined ? conf.price : (rawP?.price || 0);
+        updateProductConfig(id, 'price', Math.round(currentPrice * factor));
+      } else {
+        const currentFake = conf.fakePrice !== undefined ? conf.fakePrice : Math.round((rawP?.price || 0) * 1.3);
+        updateProductConfig(id, 'fakePrice', Math.round(currentFake * factor));
+      }
+    });
+    Alert.alert("Thành công", `Đã đổi giá ${selectedConfigs.size} sản phẩm locally. Nhấn Lưu ở góc dưới để lưu máy chủ.`);
+  };
+
+  const bulkMoveCategory = () => {
+    const newCat = bulkCatInput.trim();
+    if (!newCat) return Alert.alert("Lỗi", "Vui lòng nhập tên danh mục.");
+    if (selectedConfigs.size === 0) {
+      return Alert.alert("Thông báo", "Vui lòng tích chọn sản phẩm cần gộp.");
+    }
+    selectedConfigs.forEach(id => {
+      updateProductConfig(id, 'cat', newCat);
+    });
+    Alert.alert("Thành công", `Đã gộp ${selectedConfigs.size} sản phẩm sang danh mục "${newCat}". Nhấn Lưu ở góc dưới để lưu máy chủ.`);
+    setBulkCatInput('');
+  };
+
+  // Customer edit modal save
+  const saveUserChanges = async () => {
+    if (!editUserUid) return;
+    setIsVerifying(true);
+    try {
+      const userRef = doc(db, 'users', editUserUid);
+      const updateData: any = {
+        coins: parseInt(editUserCoins) || 0,
+      };
+      if (editUserVipDate) {
+        updateData.vipExpire = Timestamp.fromDate(editUserVipDate);
+      } else {
+        updateData.vipExpire = null;
+      }
+      await updateDoc(userRef, updateData);
+      Alert.alert("Thành công", "Đã lưu thông tin khách hàng!");
+      setIsUserModalVisible(false);
+      loadFirebaseData();
+    } catch (err: any) {
+      Alert.alert("Lỗi", "Không thể cập nhật thông tin: " + err.message);
+    }
+    setIsVerifying(false);
+  };
+
+  // Local lookup for KingMMO product scanner
+  const handleCheckKingMmo = () => {
+    let idStr = checkKingMmoId.trim();
+    if (!idStr) return Alert.alert("Lỗi", "Vui lòng nhập Link hoặc ID sản phẩm.");
+    const match = idStr.match(/\d+/);
+    const id = match ? match[0] : idStr;
+    const found = mmoRawProducts.find(p => String(p.id) === String(id));
+    if (found) {
+      setCustomFormName(found.name || '');
+      setCustomFormCat(found.cat || 'Khác');
+      setCustomFormPrice(String(found.price || 0));
+      const fakePriceVal = Math.round((found.price || 0) * 1.3);
+      setCustomFormFakePrice(String(fakePriceVal));
+      Alert.alert("Tìm thấy", `Sản phẩm: ${found.name}\nDanh mục: ${found.cat}\nGiá gốc: ${found.price.toLocaleString()}đ`);
+    } else {
+      Alert.alert("Thông báo", "Không tìm thấy sản phẩm trong KingMMO API. Bạn có thể tự nhập tay.");
     }
   };
 
@@ -508,23 +1028,35 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
           </TouchableOpacity>
         )}
         <Text style={styles.headerTitle}>ADMIN WORKSPACE</Text>
-        <TouchableOpacity onPress={loadFirebaseData}><Text style={{color: COLORS.primary, fontWeight: 'bold'}}>Tải lại</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => loadFirebaseData()}><Text style={{color: COLORS.primary, fontWeight: 'bold'}}>Tải lại</Text></TouchableOpacity>
       </View>
       
-      {/* 🔴 SCROLLVIEW CHO MENU ĐỂ TRÁNH BỊ CHẬT NẾU ĐIỆN THOẠI NHỎ */}
       <View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBar}>
-          <TouchableOpacity onPress={() => setActiveTab('DASHBOARD')} style={[styles.tabBtn, activeTab === 'DASHBOARD' && styles.tabBtnActive]}><LayoutDashboard color={activeTab === 'DASHBOARD' ? '#FFF' : '#8E8E93'} size={18} style={{marginRight: 6}}/><Text style={[styles.tabText, activeTab === 'DASHBOARD' && {color: '#FFF'}]}>TỔNG QUAN</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => setActiveTab('MEMBERS')} style={[styles.tabBtn, activeTab === 'MEMBERS' && styles.tabBtnActive]}><Users color={activeTab === 'MEMBERS' ? '#FFF' : '#8E8E93'} size={18} style={{marginRight: 6}}/><Text style={[styles.tabText, activeTab === 'MEMBERS' && {color: '#FFF'}]}>KHÁCH</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => setActiveTab('KHOTK')} style={[styles.tabBtn, activeTab === 'KHOTK' && styles.tabBtnActive]}><Box color={activeTab === 'KHOTK' ? '#FFF' : '#8E8E93'} size={18} style={{marginRight: 6}}/><Text style={[styles.tabText, activeTab === 'KHOTK' && {color: '#FFF'}]}>KHO APPLE</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => setActiveTab('GIFTCODES')} style={[styles.tabBtn, activeTab === 'GIFTCODES' && styles.tabBtnActive]}><Ticket color={activeTab === 'GIFTCODES' ? '#FFF' : '#8E8E93'} size={18} style={{marginRight: 6}}/><Text style={[styles.tabText, activeTab === 'GIFTCODES' && {color: '#FFF'}]}>GIFTCODE</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => setActiveTab('SETTINGS')} style={[styles.tabBtn, activeTab === 'SETTINGS' && styles.tabBtnActive]}><Text style={[styles.tabText, activeTab === 'SETTINGS' && {color: '#FFF'}]}>CÀI ĐẶT</Text></TouchableOpacity>
+          {TABS.map(tab => {
+            const IconComponent = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <TouchableOpacity 
+                key={tab.id} 
+                onPress={() => {
+                  setActiveTab(tab.id);
+                  setProductRenderLimit(30);
+                  setRenderLimit(30);
+                }} 
+                style={[styles.tabBtn, isActive && styles.tabBtnActive]}
+              >
+                <IconComponent color={isActive ? '#FFF' : '#8E8E93'} size={14} style={{ marginRight: 4 }} />
+                <Text style={[styles.tabText, isActive && { color: '#FFF' }]}>{tab.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
       
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         
-        {/* 🔴 TAB 1: DASHBOARD (TỔNG QUAN) */}
+        {/* TỔNG QUAN */}
         {activeTab === 'DASHBOARD' && (
           <View>
              <Text style={styles.title}>THỐNG KÊ HỆ THỐNG</Text>
@@ -533,11 +1065,12 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                 <View style={styles.statCard}><View style={[styles.statIconBox, {backgroundColor: 'rgba(10,132,255,0.1)'}]}><Users color="#0A84FF" size={18}/></View><Text style={styles.statLabel}>NGƯỜI DÙNG</Text><Text style={styles.statValue}>{stats.totalUsers.toLocaleString()}</Text></View>
                 <View style={styles.statCard}><View style={[styles.statIconBox, {backgroundColor: 'rgba(255,215,0,0.1)'}]}><Crown color="#FFD700" size={18}/></View><Text style={styles.statLabel}>KHÁCH VIP</Text><Text style={styles.statValue}>{stats.totalVips.toLocaleString()}</Text></View>
                 <View style={styles.statCard}><View style={[styles.statIconBox, {backgroundColor: 'rgba(175,82,222,0.1)'}]}><Gem color="#AF52DE" size={18}/></View><Text style={styles.statLabel}>TỔNG XU</Text><Text style={[styles.statValue, {color: '#AF52DE'}]}>{stats.totalCoins.toLocaleString()}</Text></View>
+                <View style={[styles.statCard, { width: '100%' }]}><View style={[styles.statIconBox, {backgroundColor: 'rgba(255,69,58,0.1)'}]}><Ticket color="#FF453A" size={18}/></View><Text style={styles.statLabel}>ĐƠN MALL CHỜ DUYỆT</Text><Text style={[styles.statValue, {color: '#FF453A'}]}>{allMmoOrders.filter(o => o.status === 'PENDING' && o.isPaid).length} đơn</Text></View>
              </View>
 
-             <Text style={styles.title}>BÁO CÁO KHO TÀI KHOẢN</Text>
+             <Text style={styles.title}>BÁO CÁO KHO TÀI KHOẢN CHUNG</Text>
              {['Spotify', 'Netflix', 'CapCut'].map(type => {
-                const data = invStats[type];
+                const data = invStats[type] || { total: 0, available: 0, sold: 0 };
                 const percent = data.total > 0 ? Math.round((data.sold / data.total)*100) : 0;
                 return (
                   <View key={type} style={styles.invCard}>
@@ -553,12 +1086,11 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
           </View>
         )}
 
-        {/* TAB 2: KHÁCH HÀNG */}
+        {/* KHÁCH HÀNG */}
         {activeTab === 'MEMBERS' && (
           <View>
-            <Text style={styles.title}>CHỈNH SỬA VIP KHÁCH HÀNG ({usersList.length})</Text>
+            <Text style={styles.title}>DANH SÁCH KHÁCH HÀNG ({usersList.length})</Text>
             
-            {/* Thanh tìm kiếm khách hàng */}
             <View style={[styles.searchBox, { marginBottom: 12 }]}>
               <Search size={14} color={COLORS.textMuted} style={{ marginRight: 6 }} />
               <TextInput 
@@ -578,7 +1110,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
               )}
             </View>
 
-            {getFilteredUsers().slice(0, renderLimit).map((u, i) => {
+            {getFilteredUsers().slice(0, renderLimit).map((u: any, i: number) => {
               const expireMillis = getVipMillis(u.vipExpire);
               const isVipActive = expireMillis > Date.now();
               return (
@@ -587,16 +1119,32 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                     <Text style={styles.userName}>{u.fullname || u.email}</Text>
                     <Text style={styles.userEmail}>{u.email}</Text>
                     <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6}}>
-                      {isVipActive ? ( <View style={styles.vipTag}><Text style={styles.vipTagText}>VIP: {new Date(expireMillis).toLocaleDateString('vi-VN')}</Text></View> ) : ( <View style={[styles.vipTag, {backgroundColor: '#333', borderColor: '#555'}]}><Text style={[styles.vipTagText, {color: '#888'}]}>Chưa VIP</Text></View> )}
+                      {isVipActive ? ( 
+                        <View style={styles.vipTag}><Text style={styles.vipTagText}>VIP: {new Date(expireMillis).toLocaleDateString('vi-VN')}</Text></View> 
+                      ) : ( 
+                        <View style={[styles.vipTag, {backgroundColor: '#333', borderColor: '#555'}]}><Text style={[styles.vipTagText, {color: '#888'}]}>Chưa VIP</Text></View> 
+                      )}
                       <Text style={{color: '#AF52DE', fontWeight: 'bold', fontSize: 11}}><Gem size={10} color="#AF52DE" style={{marginBottom: -2}}/> {(u.coins || 0).toLocaleString()} Xu</Text>
                     </View>
                   </View>
+                  
                   <View style={styles.actionRow}>
-                      <TouchableOpacity style={styles.actionBtn} onPress={() => addVipDays(u.id, u.vipExpire, 1)}><CalendarPlus color="#32D74B" size={12} style={{marginRight: 4}}/><Text style={styles.actionText}>1 Ngày</Text></TouchableOpacity>
-                      <TouchableOpacity style={styles.actionBtn} onPress={() => addVipDays(u.id, u.vipExpire, 7)}><CalendarPlus color="#32D74B" size={12} style={{marginRight: 4}}/><Text style={styles.actionText}>7 Ngày</Text></TouchableOpacity>
-                      <TouchableOpacity style={styles.actionBtn} onPress={() => addVipDays(u.id, u.vipExpire, 30)}><CalendarPlus color="#FFD700" size={12} style={{marginRight: 4}}/><Text style={[styles.actionText, {color: '#FFD700'}]}>1 Tháng</Text></TouchableOpacity>
+                      <TouchableOpacity style={styles.actionBtn} onPress={() => addVipDays(u.id, u.vipExpire, 1)}><Text style={styles.actionText}>+1 Ngày</Text></TouchableOpacity>
+                      <TouchableOpacity style={styles.actionBtn} onPress={() => addVipDays(u.id, u.vipExpire, 7)}><Text style={styles.actionText}>+7 Ngày</Text></TouchableOpacity>
+                      <TouchableOpacity style={styles.actionBtn} onPress={() => addVipDays(u.id, u.vipExpire, 30)}><Text style={[styles.actionText, {color: '#FFD700'}]}>+30 Ngày</Text></TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.actionBtn, { backgroundColor: 'rgba(10,132,255,0.1)', borderColor: 'rgba(10,132,255,0.4)' }]} 
+                        onPress={() => {
+                          setEditUserUid(u.id);
+                          setEditUserEmail(u.email || '');
+                          setEditUserCoins(String(u.coins || 0));
+                          setEditUserVipDate(isVipActive ? new Date(expireMillis) : null);
+                          setIsUserModalVisible(true);
+                        }}
+                      >
+                        <Text style={[styles.actionText, {color: '#0A84FF'}]}>Sửa Nâng Cao</Text>
+                      </TouchableOpacity>
                   </View>
-                  <TouchableOpacity style={styles.cancelVipBtn} onPress={() => addVipDays(u.id, u.vipExpire, 0)}><UserX color="#FFF" size={12} style={{marginRight: 6}}/><Text style={{color: '#FFF', fontWeight: 'bold', fontSize: 11}}>Tước quyền VIP</Text></TouchableOpacity>
                 </View>
               )
             })}
@@ -616,7 +1164,793 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
           </View>
         )}
 
-        {/* TAB 3: KHO APPLE ID */}
+        {/* LỊCH SỬ NẠP */}
+        {activeTab === 'TRANSACTIONS' && (
+          <View>
+            <Text style={styles.title}>LỊCH SỬ NẠP TIỀN</Text>
+            {transactionsList.length === 0 ? (
+              <Text style={{color: '#888', textAlign: 'center', marginTop: 20, fontSize: 13}}>Chưa có giao dịch nạp tiền nào.</Text>
+            ) : (
+              transactionsList.map((tx, idx) => (
+                <View key={idx} style={[styles.userCard, { padding: 12, marginBottom: 8 }]}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>{tx.orderId}</Text>
+                    <Text style={{ color: '#32D74B', fontWeight: 'bold', fontSize: 14 }}>+{tx.amount.toLocaleString()}đ</Text>
+                  </View>
+                  <Text style={{ color: '#8E8E93', fontSize: 11, marginTop: 4 }}>UID: {tx.uid}</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                    <Text style={{ color: '#555', fontSize: 10 }}>{new Date(tx.time).toLocaleString('vi-VN')}</Text>
+                    <Text style={{ color: tx.status === 'CLAIMED' ? '#32D74B' : '#FF9500', fontSize: 11, fontWeight: 'bold' }}>
+                      {tx.status} (+{tx.coins} Xu)
+                    </Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+
+        {/* DUYỆT ĐƠN MALL */}
+        {activeTab === 'MALL_ORDERS' && (
+          <View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={styles.title}>QUẢN LÝ ĐƠN HÀNG MALL</Text>
+              <TouchableOpacity 
+                style={{ backgroundColor: COLORS.danger, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 }}
+                onPress={bulkFulfillOrders}
+              >
+                <Text style={{ color: '#FFF', fontSize: 11, fontWeight: 'bold' }}>
+                  Duyệt hàng loạt ({selectedMmoOrders.size})
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Filter buttons */}
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
+              <TouchableOpacity 
+                style={[styles.typeBtn, activeMmoOrderFilter === 'PENDING_PAID' && { borderColor: '#32D74B', backgroundColor: 'rgba(50,215,75,0.1)' }]} 
+                onPress={() => setActiveMmoOrderFilter('PENDING_PAID')}
+              >
+                <Text style={[styles.typeBtnText, activeMmoOrderFilter === 'PENDING_PAID' && { color: '#32D74B' }]}>Chờ duyệt</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.typeBtn, activeMmoOrderFilter === 'COMPLETED' && { borderColor: '#0A84FF', backgroundColor: 'rgba(10,132,255,0.1)' }]} 
+                onPress={() => setActiveMmoOrderFilter('COMPLETED')}
+              >
+                <Text style={[styles.typeBtnText, activeMmoOrderFilter === 'COMPLETED' && { color: '#0A84FF' }]}>Đã xong</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.typeBtn, activeMmoOrderFilter === 'ALL' && { borderColor: '#FFF', backgroundColor: 'rgba(255,255,255,0.05)' }]} 
+                onPress={() => setActiveMmoOrderFilter('ALL')}
+              >
+                <Text style={[styles.typeBtnText, activeMmoOrderFilter === 'ALL' && { color: '#FFF' }]}>Tất cả</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Select all & Search */}
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 12 }}>
+              <TouchableOpacity 
+                style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.02)', padding: 8, borderRadius: 8, borderWidth: 0.8, borderColor: COLORS.border }}
+                onPress={toggleSelectAllOrders}
+              >
+                <Text style={{ color: '#FFF', fontSize: 11, fontWeight: 'bold' }}>Chọn Tất Cả</Text>
+              </TouchableOpacity>
+              
+              <View style={[styles.searchBox, { flex: 1, height: 34 }]}>
+                <Search size={12} color={COLORS.textMuted} style={{ marginRight: 4 }} />
+                <TextInput 
+                  style={[styles.searchInputCompact, { fontSize: 11 }]}
+                  placeholder="Tìm kiếm mã đơn hoặc UID..."
+                  placeholderTextColor={COLORS.textMuted}
+                  value={memberSearchQuery}
+                  onChangeText={setMemberSearchQuery}
+                />
+              </View>
+            </View>
+
+            {getFilteredMmoOrders().length === 0 ? (
+              <Text style={{color: '#888', textAlign: 'center', marginTop: 20}}>Không tìm thấy đơn hàng nào.</Text>
+            ) : (
+              getFilteredMmoOrders().map((o, idx) => {
+                const isSelected = selectedMmoOrders.has(o.row);
+                return (
+                  <View key={idx} style={[styles.userCard, isSelected && { borderColor: COLORS.danger, backgroundColor: 'rgba(255, 69, 58, 0.03)' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                        <TouchableOpacity 
+                          style={{
+                            width: 18, 
+                            height: 18, 
+                            borderRadius: 4, 
+                            borderWidth: 1.5, 
+                            borderColor: isSelected ? COLORS.danger : '#555',
+                            backgroundColor: isSelected ? COLORS.danger : 'transparent',
+                            justifyContent: 'center',
+                            alignItems: 'center'
+                          }}
+                          onPress={() => toggleSelectOrder(o.row)}
+                        >
+                          {isSelected && <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>✓</Text>}
+                        </TouchableOpacity>
+                        <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>{o.orderId}</Text>
+                      </View>
+                      
+                      <View style={{
+                        backgroundColor: o.status === 'PENDING' ? 'rgba(255, 149, 0, 0.12)' : 'rgba(48, 209, 88, 0.12)',
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 4
+                      }}>
+                        <Text style={{ color: o.status === 'PENDING' ? '#FF9500' : '#30D158', fontSize: 9, fontWeight: 'bold' }}>
+                          {o.status} ({o.isPaid ? 'ĐÃ T.TOÁN' : 'CHƯA THANH TOÁN'})
+                        </Text>
+                      </View>
+                    </View>
+                    
+                    <Text style={{ color: '#8E8E93', fontSize: 12 }}>SP: {o.productName} (SL: {o.amount})</Text>
+                    <Text style={{ color: '#8E8E93', fontSize: 11, marginTop: 2 }}>Giá: {o.price ? o.price.toLocaleString() : 0}đ | UID: {o.uid}</Text>
+                    {o.accountData ? (
+                      <Text style={{ color: '#30D158', fontSize: 11, fontFamily: 'monospace', marginTop: 4, backgroundColor: 'rgba(48,209,88,0.05)', padding: 6, borderRadius: 6 }}>
+                        Acc: {o.accountData}
+                      </Text>
+                    ) : null}
+                    
+                    <View style={[styles.actionRow, { marginTop: 10 }]}>
+                      {o.status === 'PENDING' && (
+                        <>
+                          <TouchableOpacity 
+                            style={[styles.actionBtn, { backgroundColor: 'rgba(50,215,75,0.1)', borderColor: 'rgba(50,215,75,0.4)' }]} 
+                            onPress={() => fulfillOrderAPI(o.row, o.productId, o.amount)}
+                          >
+                            <Text style={[styles.actionText, { color: '#32D74B' }]}>Duyệt API</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            style={[styles.actionBtn, { backgroundColor: 'rgba(10,132,255,0.1)', borderColor: 'rgba(10,132,255,0.4)' }]} 
+                            onPress={() => {
+                              setManualFulfillRow(o.row);
+                              setManualAccountText('');
+                              setIsManualModalVisible(true);
+                            }}
+                          >
+                            <Text style={[styles.actionText, { color: '#0A84FF' }]}>Duyệt Tay</Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
+                      <TouchableOpacity 
+                        style={[styles.actionBtn, { backgroundColor: 'rgba(255,69,58,0.1)', borderColor: 'rgba(255,69,58,0.4)' }]} 
+                        onPress={() => deleteOrder(o.row)}
+                      >
+                        <Text style={[styles.actionText, { color: '#FF453A' }]}>Xóa Đơn</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        {/* KHO SẢN PHẨM */}
+        {activeTab === 'PRODUCTS' && (
+          <View>
+            <Text style={styles.title}>KHO CẤU HÌNH SẢN PHẨM MMO</Text>
+            
+            <View style={{ gap: 8, marginBottom: 12 }}>
+              <View style={styles.searchBox}>
+                <Search size={14} color={COLORS.textMuted} style={{ marginRight: 6 }} />
+                <TextInput 
+                  style={styles.searchInputCompact}
+                  placeholder="Tìm kiếm Tên SP, ID hoặc Danh Mục..."
+                  placeholderTextColor={COLORS.textMuted}
+                  value={productSearchQuery}
+                  onChangeText={(text) => {
+                    setProductSearchQuery(text);
+                    setProductRenderLimit(30);
+                  }}
+                />
+              </View>
+              
+              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                <Text style={{ color: '#8E8E93', fontSize: 11, fontWeight: 'bold' }}>Danh mục:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                  <TouchableOpacity 
+                    style={[styles.typeBtn, productCatFilter === 'all' && { borderColor: COLORS.primary }]}
+                    onPress={() => { setProductCatFilter('all'); setProductRenderLimit(30); }}
+                  >
+                    <Text style={[styles.typeBtnText, productCatFilter === 'all' && { color: COLORS.primary }]}>Tất cả</Text>
+                  </TouchableOpacity>
+                  {Array.from(new Set(mmoRawProducts.map(p => p.cat || 'Khác'))).map(catName => (
+                    <TouchableOpacity 
+                      key={catName} 
+                      style={[styles.typeBtn, productCatFilter === catName && { borderColor: COLORS.primary }]}
+                      onPress={() => { setProductCatFilter(catName); setProductRenderLimit(30); }}
+                    >
+                      <Text style={[styles.typeBtnText, productCatFilter === catName && { color: COLORS.primary }]}>{catName}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+
+            {/* Bulk actions */}
+            <View style={[styles.userCard, { padding: 10, marginBottom: 12 }]}>
+              <Text style={{ color: '#FF9500', fontWeight: 'bold', fontSize: 11, marginBottom: 8 }}>ĐỔI GIÁ HÀNG LOẠT (%) CHO SP ĐÃ CHỌN ({selectedConfigs.size})</Text>
+              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', marginBottom: 10 }}>
+                <TextInput 
+                  style={[styles.addInput, { width: 55, height: 34, marginBottom: 0, textAlign: 'center', paddingHorizontal: 0 }]}
+                  placeholder="%"
+                  placeholderTextColor={COLORS.textMuted}
+                  keyboardType="numeric"
+                  value={bulkPercent}
+                  onChangeText={setBulkPercent}
+                />
+                <TouchableOpacity 
+                  style={[styles.typeBtn, { height: 34, paddingHorizontal: 8 }]}
+                  onPress={() => setBulkPriceTarget(prev => prev === 'price' ? 'fakePrice' : 'price')}
+                >
+                  <Text style={{ color: '#FFF', fontSize: 11 }}>
+                    {bulkPriceTarget === 'price' ? 'Giá Bán' : 'Giá Gạch'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={{ backgroundColor: '#30D158', width: 34, height: 34, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }}
+                  onPress={() => applyBulkDiscount('up')}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 14 }}>▲</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={{ backgroundColor: '#FF453A', width: 34, height: 34, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }}
+                  onPress={() => applyBulkDiscount('down')}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 14 }}>▼</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ color: '#0A84FF', fontWeight: 'bold', fontSize: 11, marginBottom: 8 }}>GỘP CÁC SP ĐÃ CHỌN VÀO DANH MỤC MỚI</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TextInput 
+                  style={[styles.addInput, { flex: 1, height: 34, marginBottom: 0, fontSize: 11 }]}
+                  placeholder="Tên danh mục mới..."
+                  placeholderTextColor={COLORS.textMuted}
+                  value={bulkCatInput}
+                  onChangeText={setBulkCatInput}
+                />
+                <TouchableOpacity 
+                  style={{ backgroundColor: '#0A84FF', paddingHorizontal: 12, borderRadius: 8, justifyContent: 'center' }}
+                  onPress={bulkMoveCategory}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 11 }}>GỘP</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Select all checkbox */}
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.02)', padding: 8, borderRadius: 8, borderWidth: 0.8, borderColor: COLORS.border, marginBottom: 10, alignSelf: 'flex-start' }}
+              onPress={toggleSelectAllConfigs}
+            >
+              <Text style={{ color: '#FFF', fontSize: 11, fontWeight: 'bold' }}>Chọn Tất Cả</Text>
+            </TouchableOpacity>
+
+            {/* Config list */}
+            {getFilteredMmoProducts().length === 0 ? (
+              <Text style={{color: '#888', textAlign: 'center', marginTop: 20}}>Không tìm thấy sản phẩm nào.</Text>
+            ) : (
+              getFilteredMmoProducts().slice(0, productRenderLimit).map((p, idx) => {
+                const id = String(p.id);
+                const conf = mmoConfigState[id] || {};
+                const isSelected = selectedConfigs.has(id);
+                
+                return (
+                  <View key={id} style={[styles.userCard, isSelected && { borderColor: '#0A84FF', backgroundColor: 'rgba(10, 132, 255, 0.03)' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                        <TouchableOpacity 
+                          style={{
+                            width: 18, 
+                            height: 18, 
+                            borderRadius: 4, 
+                            borderWidth: 1.5, 
+                            borderColor: isSelected ? '#0A84FF' : '#555',
+                            backgroundColor: isSelected ? '#0A84FF' : 'transparent',
+                            justifyContent: 'center',
+                            alignItems: 'center'
+                          }}
+                          onPress={() => toggleSelectConfig(id)}
+                        >
+                          {isSelected && <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>✓</Text>}
+                        </TouchableOpacity>
+                        <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }} numberOfLines={1}>
+                          ID: {id} - {conf.name || p.name}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={{ gap: 6 }}>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#8E8E93', fontSize: 10, marginBottom: 2 }}>Giá bán (đ):</Text>
+                          <TextInput 
+                            style={[styles.addInput, { height: 32, marginBottom: 0, paddingHorizontal: 8, fontSize: 11 }]}
+                            keyboardType="numeric"
+                            value={String(conf.price !== undefined ? conf.price : (p.price || 0))}
+                            onChangeText={(txt) => updateProductConfig(id, 'price', parseInt(txt) || 0)}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#8E8E93', fontSize: 10, marginBottom: 2 }}>Giá gạch (đ):</Text>
+                          <TextInput 
+                            style={[styles.addInput, { height: 32, marginBottom: 0, paddingHorizontal: 8, fontSize: 11 }]}
+                            keyboardType="numeric"
+                            placeholder="Để trống"
+                            placeholderTextColor={COLORS.textMuted}
+                            value={String(conf.fakePrice || '')}
+                            onChangeText={(txt) => updateProductConfig(id, 'fakePrice', parseInt(txt) || '')}
+                          />
+                        </View>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#8E8E93', fontSize: 10, marginBottom: 2 }}>Danh mục:</Text>
+                          <TextInput 
+                            style={[styles.addInput, { height: 32, marginBottom: 0, paddingHorizontal: 8, fontSize: 11 }]}
+                            value={conf.cat || p.cat || 'Khác'}
+                            onChangeText={(txt) => updateProductConfig(id, 'cat', txt)}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#8E8E93', fontSize: 10, marginBottom: 2 }}>Kho hàng:</Text>
+                          <TextInput 
+                            style={[styles.addInput, { height: 32, marginBottom: 0, paddingHorizontal: 8, fontSize: 11 }]}
+                            keyboardType="numeric"
+                            value={String(conf.stock !== undefined ? conf.stock : (p.stock || 0))}
+                            onChangeText={(txt) => updateProductConfig(id, 'stock', parseInt(txt) || 0)}
+                          />
+                        </View>
+                      </View>
+
+                      <View>
+                        <Text style={{ color: '#8E8E93', fontSize: 10, marginBottom: 2 }}>Mô tả sản phẩm:</Text>
+                        <TextInput 
+                          style={[styles.addInput, { height: 32, marginBottom: 0, paddingHorizontal: 8, fontSize: 11 }]}
+                          placeholder="Mô tả..."
+                          placeholderTextColor={COLORS.textMuted}
+                          value={conf.desc || ''}
+                          onChangeText={(txt) => updateProductConfig(id, 'desc', txt)}
+                        />
+                      </View>
+
+                      <View>
+                        <Text style={{ color: '#8E8E93', fontSize: 10, marginBottom: 2 }}>Icon URL:</Text>
+                        <TextInput 
+                          style={[styles.addInput, { height: 32, marginBottom: 0, paddingHorizontal: 8, fontSize: 11 }]}
+                          placeholder="https://..."
+                          placeholderTextColor={COLORS.textMuted}
+                          value={conf.icon || ''}
+                          onChangeText={(txt) => updateProductConfig(id, 'icon', txt)}
+                        />
+                      </View>
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6, paddingTop: 6, borderTopWidth: 0.5, borderColor: 'rgba(255,255,255,0.05)' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={{ color: '#FFF', fontSize: 12 }}>Ẩn sản phẩm:</Text>
+                          <Switch 
+                            value={conf.isHidden === true}
+                            onValueChange={(val) => updateProductConfig(id, 'isHidden', val)}
+                          />
+                        </View>
+                        
+                        <TouchableOpacity 
+                          style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(255,69,58,0.1)', borderRadius: 6 }}
+                          onPress={() => {
+                            Alert.alert("Xác nhận", "Xóa sản phẩm này khỏi cấu hình local? (Bấm Lưu máy chủ sau đó để đồng bộ)", [
+                              { text: "Hủy", style: "cancel" },
+                              { text: "Xóa", style: "destructive", onPress: () => {
+                                  setMmoRawProducts(prev => prev.filter(item => String(item.id) !== String(id)));
+                                  setMmoConfigState((prev: any) => {
+                                    const next = { ...prev };
+                                    delete next[id];
+                                    return next;
+                                  });
+                                  setHasUnsavedChanges(true);
+                                }
+                              }
+                            ]);
+                          }}
+                        >
+                          <Text style={{ color: '#FF453A', fontSize: 11, fontWeight: 'bold' }}>Xóa</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+
+            {getFilteredMmoProducts().length > productRenderLimit && (
+              <TouchableOpacity 
+                style={[styles.actionBtn, { marginTop: 5, marginBottom: 20, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.02)' }]} 
+                onPress={() => setProductRenderLimit(prev => prev + 30)}
+              >
+                <Text style={styles.actionText}>Tải thêm sản phẩm (+30)...</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {/* QUẢN LÝ DANH MỤC */}
+        {activeTab === 'CATEGORIES' && (
+          <View>
+            <Text style={styles.title}>QUẢN LÝ DANH MỤC CHUYÊN SÂU</Text>
+            
+            <View style={{ flexDirection: 'row', gap: 10, minHeight: 350 }}>
+              {/* Left Side: Category List */}
+              <View style={{ width: '40%', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: 12, borderWidth: 0.8, borderColor: COLORS.border, padding: 8 }}>
+                <Text style={{ color: '#8E8E93', fontSize: 9, fontWeight: 'bold', marginBottom: 8, textTransform: 'uppercase' }}>Danh mục</Text>
+                <ScrollView contentContainerStyle={{ gap: 6 }} showsVerticalScrollIndicator={false}>
+                  {Array.from(new Set(mmoRawProducts.map(p => p.cat || 'Khác'))).map(cName => {
+                    const isSelected = selectedCatName === cName;
+                    return (
+                      <TouchableOpacity 
+                        key={cName}
+                        style={{
+                          backgroundColor: isSelected ? 'rgba(0,122,255,0.15)' : 'rgba(255,255,255,0.02)',
+                          borderColor: isSelected ? COLORS.primary : COLORS.border,
+                          borderWidth: 0.8,
+                          borderRadius: 8,
+                          padding: 10
+                        }}
+                        onPress={() => {
+                          setSelectedCatName(cName);
+                          const meta = categoryMetadataMap[cName] || {};
+                          setCatManagerIcon(meta.icon || '');
+                          setCatManagerOrder(String(meta.order !== undefined ? meta.order : 999));
+                          setCatManagerHot(meta.hot === true);
+                          setCatManagerHidden(meta.hidden === true);
+                        }}
+                      >
+                        <Text style={{ color: isSelected ? COLORS.primary : '#FFF', fontSize: 12, fontWeight: 'bold' }}>
+                          {cName}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Right Side: Editors */}
+              <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: 12, borderWidth: 0.8, borderColor: COLORS.border, padding: 12 }}>
+                {selectedCatName ? (
+                  <View style={{ gap: 8 }}>
+                    <Text style={{ color: COLORS.primary, fontWeight: 'bold', fontSize: 13, marginBottom: 4 }}>
+                      THIẾT LẬP: {selectedCatName}
+                    </Text>
+                    
+                    <Text style={{ color: '#8E8E93', fontSize: 10 }}>Link Icon Danh Mục:</Text>
+                    <TextInput 
+                      style={[styles.addInput, { height: 34, marginBottom: 0, fontSize: 11 }]}
+                      placeholder="https://..."
+                      placeholderTextColor={COLORS.textMuted}
+                      value={catManagerIcon}
+                      onChangeText={setCatManagerIcon}
+                    />
+
+                    <Text style={{ color: '#8E8E93', fontSize: 10 }}>Thứ Tự Sắp Xếp (Số):</Text>
+                    <TextInput 
+                      style={[styles.addInput, { height: 34, marginBottom: 0, fontSize: 11 }]}
+                      keyboardType="numeric"
+                      placeholder="VD: 1, 2, 3"
+                      placeholderTextColor={COLORS.textMuted}
+                      value={catManagerOrder}
+                      onChangeText={setCatManagerOrder}
+                    />
+
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                      <Text style={{ color: '#FFF', fontSize: 11 }}>Đẩy Lên Hot (HOT):</Text>
+                      <Switch 
+                        value={catManagerHot}
+                        onValueChange={setCatManagerHot}
+                      />
+                    </View>
+
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                      <Text style={{ color: '#FFF', fontSize: 11 }}>Ẩn Danh Mục:</Text>
+                      <Switch 
+                        value={catManagerHidden}
+                        onValueChange={setCatManagerHidden}
+                      />
+                    </View>
+
+                    <TouchableOpacity 
+                      style={[styles.submitBtn, { height: 36, marginTop: 10, backgroundColor: COLORS.primary }]}
+                      onPress={saveCategorySettings}
+                    >
+                      <Text style={styles.submitBtnText}>LƯU CẤU HÌNH DM</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <Text style={{ color: '#888', textAlign: 'center', fontSize: 12 }}>
+                      Vui lòng chọn danh mục bên trái
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* THÊM SẢN PHẨM */}
+        {activeTab === 'ADD_PRODUCT' && (
+          <View>
+            <Text style={styles.title}>KÉO HÀNG ẨN / THÊM SP TAY</Text>
+            
+            {/* Link scanner */}
+            <View style={[styles.userCard, { padding: 12, backgroundColor: 'rgba(255,215,0,0.02)', borderColor: 'rgba(255,215,0,0.2)' }]}>
+              <Text style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 12, marginBottom: 8 }}>BỘ QUÉT LINK / ID KINGMMO</Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                <TextInput 
+                  style={[styles.addInput, { flex: 1, height: 38, marginBottom: 0, fontSize: 12 }]}
+                  placeholder="Dán Link SP hoặc ID KingMMO..."
+                  placeholderTextColor={COLORS.textMuted}
+                  value={checkKingMmoId}
+                  onChangeText={setCheckKingMmoId}
+                />
+                <TouchableOpacity 
+                  style={{ backgroundColor: '#FFD700', paddingHorizontal: 16, borderRadius: 10, justifyContent: 'center' }}
+                  onPress={handleCheckKingMmo}
+                >
+                  <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 12 }}>TÌM</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Custom product form */}
+            <View style={[styles.userCard, { marginTop: 12 }]}>
+              <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 12, marginBottom: 12 }}>FORM THÊM SẢN PHẨM THỦ CÔNG</Text>
+              
+              <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Tên Sản Phẩm *:</Text>
+              <TextInput 
+                style={styles.addInput}
+                placeholder="Ví dụ: Tài khoản Netflix 1 Tháng..."
+                placeholderTextColor={COLORS.textMuted}
+                value={customFormName}
+                onChangeText={setCustomFormName}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Danh mục *:</Text>
+                  <TextInput 
+                    style={styles.addInput}
+                    placeholder="VD: Spotify, Netflix..."
+                    placeholderTextColor={COLORS.textMuted}
+                    value={customFormCat}
+                    onChangeText={setCustomFormCat}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Kho hàng:</Text>
+                  <TextInput 
+                    style={styles.addInput}
+                    keyboardType="numeric"
+                    value={customFormStock}
+                    onChangeText={setCustomFormStock}
+                  />
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Giá bán (đ) *:</Text>
+                  <TextInput 
+                    style={styles.addInput}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={customFormPrice}
+                    onChangeText={setCustomFormPrice}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Giá gạch cũ:</Text>
+                  <TextInput 
+                    style={styles.addInput}
+                    keyboardType="numeric"
+                    placeholder="Tính tự động +30%"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={customFormFakePrice}
+                    onChangeText={setCustomFormFakePrice}
+                  />
+                </View>
+              </View>
+
+              <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Link Ảnh Icon (URL):</Text>
+              <TextInput 
+                style={styles.addInput}
+                placeholder="https://..."
+                placeholderTextColor={COLORS.textMuted}
+                value={customFormIcon}
+                onChangeText={setCustomFormIcon}
+              />
+
+              <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Mô tả chi tiết:</Text>
+              <TextInput 
+                style={[styles.textArea, { height: 80 }]}
+                placeholder="Nhập mô tả sản phẩm..."
+                placeholderTextColor={COLORS.textMuted}
+                multiline
+                value={customFormDesc}
+                onChangeText={setCustomFormDesc}
+              />
+
+              <TouchableOpacity 
+                style={[styles.submitBtn, { marginTop: 15, backgroundColor: '#AF52DE' }]}
+                onPress={() => {
+                  if (!customFormName.trim() || !customFormPrice.trim()) {
+                    return Alert.alert("Lỗi", "Vui lòng nhập đầy đủ Tên và Giá bán sản phẩm.");
+                  }
+                  
+                  let parsedId = checkKingMmoId.trim().match(/\d+/);
+                  let finalId = parsedId ? parsedId[0] : `CUSTOM_${Date.now()}`;
+                  
+                  setMmoConfigState((prev: any) => {
+                    const next = { ...prev };
+                    next[finalId] = {
+                      name: customFormName,
+                      cat: customFormCat || 'Khác',
+                      price: parseInt(customFormPrice) || 0,
+                      fakePrice: customFormFakePrice ? parseInt(customFormFakePrice) : Math.round((parseInt(customFormPrice) || 0) * 1.3),
+                      icon: customFormIcon,
+                      stock: parseInt(customFormStock) || 999,
+                      desc: customFormDesc,
+                      isHidden: false
+                    };
+                    return next;
+                  });
+                  
+                  setMmoRawProducts(prev => [
+                    {
+                      id: finalId,
+                      name: customFormName,
+                      cat: customFormCat || 'Khác',
+                      price: parseInt(customFormPrice) || 0,
+                      stock: parseInt(customFormStock) || 999
+                    },
+                    ...prev
+                  ]);
+                  
+                  setHasUnsavedChanges(true);
+                  Alert.alert("Thành công", `Đã thêm sản phẩm ID: ${finalId} vào danh sách local. Hãy nhấn "Lưu thay đổi máy chủ" để cập nhật lên Sheets.`);
+                  
+                  setCheckKingMmoId('');
+                  setCustomFormName('');
+                  setCustomFormCat('');
+                  setCustomFormStock('999');
+                  setCustomFormPrice('');
+                  setCustomFormFakePrice('');
+                  setCustomFormIcon('');
+                  setCustomFormDesc('');
+                }}
+              >
+                <Text style={styles.submitBtnText}>THÊM VÀO BẢNG CHỜ</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* DEAL HOT */}
+        {activeTab === 'DEAL_HOT' && (
+          <View>
+            <Text style={styles.title}>CẤU HÌNH DEAL HOT TRANG CHỦ</Text>
+            
+            <View style={[styles.userCard, { backgroundColor: 'rgba(255,149,0,0.02)', borderColor: 'rgba(255,149,0,0.2)' }]}>
+              <Text style={{ color: '#FF9500', fontWeight: 'bold', fontSize: 12, marginBottom: 12 }}>BANNER DEAL HOT NỔI BẬT</Text>
+              
+              <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>ID Sản Phẩm Muốn Đẩy Lên Deal *:</Text>
+              <TextInput 
+                style={styles.addInput}
+                placeholder="VD: 9518"
+                placeholderTextColor={COLORS.textMuted}
+                value={dealTargetId}
+                onChangeText={setDealTargetId}
+              />
+
+              <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Tên Deal (Tùy chỉnh tiêu đề) *:</Text>
+              <TextInput 
+                style={styles.addInput}
+                placeholder="VD: Spotify Giá Hủy Diệt 1 Ngày Duy Nhất..."
+                placeholderTextColor={COLORS.textMuted}
+                value={dealName}
+                onChangeText={setDealName}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Giá Deal (VNĐ) *:</Text>
+                  <TextInput 
+                    style={styles.addInput}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={dealPrice}
+                    onChangeText={setDealPrice}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Thời Gian Kết Thúc Deal *:</Text>
+                  <TextInput 
+                    style={styles.addInput}
+                    placeholder="VD: 2026-06-17T23:59:00"
+                    placeholderTextColor={COLORS.textMuted}
+                    value={dealEndTime}
+                    onChangeText={setDealEndTime}
+                  />
+                </View>
+              </View>
+
+              <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Link Ảnh Bìa (Vuông):</Text>
+              <TextInput 
+                style={styles.addInput}
+                placeholder="https://..."
+                placeholderTextColor={COLORS.textMuted}
+                value={dealIcon}
+                onChangeText={setDealIcon}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                <TouchableOpacity 
+                  style={{ backgroundColor: 'rgba(255,69,58,0.1)', paddingHorizontal: 16, borderRadius: 10, justifyContent: 'center', borderWidth: 0.8, borderColor: 'rgba(255,69,58,0.4)' }}
+                  onPress={() => {
+                    setMmoConfigState((prev: any) => {
+                      const next = { ...prev };
+                      next['DEAL___HOT'] = { name: '', price: 0, icon: '', desc: '', cat: '' };
+                      return next;
+                    });
+                    setDealTargetId('');
+                    setDealName('');
+                    setDealPrice('');
+                    setDealEndTime('');
+                    setDealIcon('');
+                    setHasUnsavedChanges(true);
+                    Alert.alert("Thành công", "Đã xóa Deal Hot khỏi cấu hình local. Hãy bấm Lưu máy chủ để cập nhật.");
+                  }}
+                >
+                  <Text style={{ color: '#FF453A', fontSize: 12, fontWeight: 'bold' }}>Tắt Deal</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={{ flex: 1, backgroundColor: '#FF9500', height: 42, borderRadius: 10, justifyContent: 'center', alignItems: 'center' }}
+                  onPress={() => {
+                    if (!dealTargetId.trim() || !dealName.trim() || !dealPrice.trim() || !dealEndTime.trim()) {
+                      return Alert.alert("Lỗi", "Vui lòng điền đầy đủ các trường yêu cầu.");
+                    }
+                    
+                    setMmoConfigState((prev: any) => {
+                      const next = { ...prev };
+                      next['DEAL___HOT'] = {
+                        name: dealName,
+                        price: parseInt(dealPrice) || 0,
+                        icon: dealIcon,
+                        desc: dealEndTime, 
+                        cat: dealTargetId 
+                      };
+                      return next;
+                    });
+                    
+                    setHasUnsavedChanges(true);
+                    Alert.alert("Thành công", "Đã lưu Deal Hot locally. Hãy nhấn Lưu máy chủ ở cuối trang để đồng bộ.");
+                  }}
+                >
+                  <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 13 }}>LƯU DEAL HOT</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* TAB: KHO APPLE ID */}
         {activeTab === 'KHOTK' && (
           <View>
             <Text style={styles.title}>NẠP KHO APPLE ID</Text>
@@ -636,7 +1970,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
           </View>
         )}
 
-        {/* 🔴 TAB 4: MARKETING (GIFTCODE) */}
+        {/* GIFTCODES */}
         {activeTab === 'GIFTCODES' && (
           <View>
             <Text style={styles.title}>TẠO MÃ KHUYẾN MÃI (GIFTCODE)</Text>
@@ -671,193 +2005,9 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
           </View>
         )}
 
-        {/* TAB 5: HỆ THỐNG */}
-        {activeTab === 'SETTINGS' && (
+        {/* THÔNG BÁO PUSH */}
+        {activeTab === 'PUSH' && (
           <View>
-            <Text style={styles.title}>ĐĂNG XUẤT & BẢO MẬT</Text>
-            <View style={styles.userCard}>
-              <TouchableOpacity 
-                style={[styles.submitBtn, { backgroundColor: COLORS.danger, height: 42 }]} 
-                onPress={async () => {
-                  Alert.alert("Xác nhận đăng xuất", "Xóa mã PIN đã lưu và đăng xuất khỏi Admin Panel?", [
-                    { text: "Hủy", style: "cancel" },
-                    { text: "Đăng xuất", style: "destructive", onPress: async () => {
-                      await AsyncStorage.removeItem('@admin_pin');
-                      setPin('');
-                      setIsAuthenticated(false);
-                      try {
-                        await signOut(auth);
-                      } catch (err) {
-                        console.warn("Failed to sign out from Firebase:", err);
-                      }
-                    }}
-                  ]);
-                }}
-              >
-                <Text style={styles.submitBtnText}>ĐĂNG XUẤT / RESET MÃ PIN</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.title}>CẤU HÌNH HỆ THỐNG APP</Text>
-            <View style={styles.userCard}>
-              <View style={styles.settingRow}>
-                <Text style={styles.settingText}>Bật gói 14 Ngày</Text>
-                <Switch 
-                  value={sysConfig.enable14Days} 
-                  onValueChange={(val) => setSysConfig({...sysConfig, enable14Days: val})} 
-                />
-              </View>
-              <TouchableOpacity style={styles.submitBtn} onPress={saveSettings}>
-                <Text style={styles.submitBtnText}>LƯU CẤU HÌNH CHUNG</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.title}>CẤU HÌNH GIÁ VÀ MÔ TẢ GÓI VIP</Text>
-            <View style={styles.userCard}>
-              <Text style={{color: '#8E8E93', marginBottom: 6, fontSize: 13, fontWeight: '700'}}>Giá gói Trải Nghiệm 14 ngày (đ):</Text>
-              <TextInput 
-                style={styles.addInput} 
-                placeholder="Ví dụ: 20000" 
-                placeholderTextColor={COLORS.textMuted} 
-                keyboardType="numeric"
-                value={String(sysConfig.vipPrice14D ?? 20000)} 
-                onChangeText={(txt) => setSysConfig({...sysConfig, vipPrice14D: parseInt(txt) || 0})} 
-              />
-
-              <Text style={{color: '#8E8E93', marginTop: 15, marginBottom: 6, fontSize: 13, fontWeight: '700'}}>Giá gói VIP 1 Tháng (đ):</Text>
-              <TextInput 
-                style={styles.addInput} 
-                placeholder="Ví dụ: 40000" 
-                placeholderTextColor={COLORS.textMuted} 
-                keyboardType="numeric"
-                value={String(sysConfig.vipPrice30D ?? 40000)} 
-                onChangeText={(txt) => setSysConfig({...sysConfig, vipPrice30D: parseInt(txt) || 0})} 
-              />
-
-              <Text style={{color: '#8E8E93', marginTop: 15, marginBottom: 6, fontSize: 13, fontWeight: '700'}}>Giá gói VIP 1 Năm (đ):</Text>
-              <TextInput 
-                style={styles.addInput} 
-                placeholder="Ví dụ: 300000" 
-                placeholderTextColor={COLORS.textMuted} 
-                keyboardType="numeric"
-                value={String(sysConfig.vipPrice1Y ?? 300000)} 
-                onChangeText={(txt) => setSysConfig({...sysConfig, vipPrice1Y: parseInt(txt) || 0})} 
-              />
-
-              <Text style={{color: '#8E8E93', marginTop: 15, marginBottom: 6, fontSize: 13, fontWeight: '700'}}>Mô tả quyền lợi VIP (mỗi dòng một quyền lợi):</Text>
-              <TextInput 
-                style={[styles.textArea, { height: 120 }]} 
-                placeholder="Nhập danh sách quyền lợi..." 
-                placeholderTextColor={COLORS.textMuted} 
-                multiline 
-                value={sysConfig.vipFeaturesText} 
-                onChangeText={(txt) => setSysConfig({...sysConfig, vipFeaturesText: txt})} 
-              />
-
-              <TouchableOpacity style={[styles.submitBtn, {marginTop: 20, backgroundColor: '#FFE259'}]} onPress={saveSettings}>
-                <Text style={[styles.submitBtnText, {color: '#000'}]}>LƯU CẤU HÌNH GÓI VIP</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.title}>CẤU HÌNH CẬP NHẬT ỨNG DỤNG (FORCE UPDATE)</Text>
-            <View style={styles.userCard}>
-              <View style={styles.settingRow}>
-                <Text style={styles.settingText}>Bắt buộc cập nhật</Text>
-                <Switch 
-                  value={sysConfig.forceUpdateShow || false} 
-                  onValueChange={(val) => setSysConfig({...sysConfig, forceUpdateShow: val})} 
-                />
-              </View>
-
-              <View style={styles.settingRow}>
-                <Text style={styles.settingText}>Cho phép bỏ qua cập nhật</Text>
-                <Switch 
-                  value={sysConfig.forceUpdateAllowSkip || false} 
-                  onValueChange={(val) => setSysConfig({...sysConfig, forceUpdateAllowSkip: val})} 
-                />
-              </View>
-              
-              <Text style={{color: '#8E8E93', marginBottom: 6, fontSize: 13, fontWeight: '700'}}>Nội dung thông báo cập nhật:</Text>
-              <TextInput 
-                style={styles.textArea} 
-                placeholder="Nhập nội dung yêu cầu cập nhật..." 
-                placeholderTextColor={COLORS.textMuted} 
-                multiline 
-                value={sysConfig.forceUpdateMsg || ''} 
-                onChangeText={(txt) => setSysConfig({...sysConfig, forceUpdateMsg: txt})} 
-              />
-
-              <Text style={{color: '#8E8E93', marginTop: 15, marginBottom: 6, fontSize: 13, fontWeight: '700'}}>Đường dẫn cập nhật (URL):</Text>
-              <TextInput 
-                style={styles.addInput} 
-                placeholder="Nhập link cập nhật (VD: https://...)" 
-                placeholderTextColor={COLORS.textMuted} 
-                value={sysConfig.forceUpdateUrl || ''} 
-                onChangeText={(txt) => setSysConfig({...sysConfig, forceUpdateUrl: txt})} 
-              />
-
-              <TouchableOpacity style={[styles.submitBtn, {marginTop: 20, backgroundColor: '#FF453A'}]} onPress={saveSettings}>
-                <Text style={styles.submitBtnText}>LƯU CẤU HÌNH CẬP NHẬT</Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.title}>THÔNG BÁO TRONG APP (TRANG CHỦ)</Text>
-            <View style={styles.userCard}>
-              <View style={styles.settingRow}>
-                <Text style={styles.settingText}>Bật Popup thông báo</Text>
-                <Switch 
-                  value={sysConfig.homePopupShow} 
-                  onValueChange={(val) => setSysConfig({...sysConfig, homePopupShow: val})} 
-                />
-              </View>
-              
-              <Text style={{color: '#8E8E93', marginBottom: 6, fontSize: 13, fontWeight: '700'}}>Tiêu đề:</Text>
-              <TextInput 
-                style={styles.addInput} 
-                placeholder="Nhập tiêu đề..." 
-                placeholderTextColor={COLORS.textMuted} 
-                value={sysConfig.homePopupTitle} 
-                onChangeText={(txt) => setSysConfig({...sysConfig, homePopupTitle: txt})} 
-              />
-              
-              <Text style={{color: '#8E8E93', marginBottom: 6, fontSize: 13, fontWeight: '700'}}>Nội dung Popup:</Text>
-              <TextInput 
-                style={styles.textArea} 
-                placeholder="Nhập nội dung..." 
-                placeholderTextColor={COLORS.textMuted} 
-                multiline 
-                value={sysConfig.homePopupMsg} 
-                onChangeText={(txt) => setSysConfig({...sysConfig, homePopupMsg: txt})} 
-              />
-
-              <Text style={{color: '#8E8E93', marginTop: 15, marginBottom: 6, fontSize: 13, fontWeight: '700'}}>URL Hình ảnh (Banner):</Text>
-              <TextInput 
-                style={styles.addInput} 
-                placeholder="Link hình ảnh (VD: https://...)" 
-                placeholderTextColor={COLORS.textMuted} 
-                value={sysConfig.homePopupImg} 
-                onChangeText={(txt) => setSysConfig({...sysConfig, homePopupImg: txt})} 
-              />
-              {sysConfig.homePopupImg ? (
-                <View style={{ marginTop: 10, borderRadius: 12, overflow: 'hidden', borderWidth: 0.8, borderColor: COLORS.border }}>
-                  <Image source={{ uri: sysConfig.homePopupImg }} style={{ width: '100%', height: 120 }} resizeMode="cover" />
-                </View>
-              ) : null}
-
-              <Text style={{color: '#8E8E93', marginTop: 15, marginBottom: 6, fontSize: 13, fontWeight: '700'}}>URL Hành động (Khi nhấn nút):</Text>
-              <TextInput 
-                style={styles.addInput} 
-                placeholder="Đường dẫn liên kết (VD: https://...)" 
-                placeholderTextColor={COLORS.textMuted} 
-                value={sysConfig.homePopupUrl} 
-                onChangeText={(txt) => setSysConfig({...sysConfig, homePopupUrl: txt})} 
-              />
-
-              <TouchableOpacity style={[styles.submitBtn, {marginTop: 20, backgroundColor: '#30D158'}]} onPress={saveSettings}>
-                <Text style={styles.submitBtnText}>LƯU THÔNG BÁO TRONG APP</Text>
-              </TouchableOpacity>
-            </View>
-
             <Text style={styles.title}>GỬI THÔNG BÁO MÁY (PUSH NOTIFICATIONS)</Text>
             <View style={styles.userCard}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingBottom: 10, borderBottomWidth: 0.8, borderColor: COLORS.border }}>
@@ -1064,6 +2214,134 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
           </View>
         )}
       </ScrollView>
+
+      {hasUnsavedChanges && (
+        <TouchableOpacity 
+          style={styles.floatingSaveBtn} 
+          onPress={saveAllConfigsToServer}
+        >
+          <RefreshCw color="#FFF" size={16} style={{ marginRight: 6 }} />
+          <Text style={styles.floatingSaveText}>LƯU THAY ĐỔI MÁY CHỦ</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* MODAL: SỬA KHÁCH HÀNG NÂNG CAO */}
+      <Modal
+        visible={isUserModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsUserModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>CHỈNH SỬA NÂNG CAO</Text>
+                <TouchableOpacity onPress={() => setIsUserModalVisible(false)}>
+                  <X color="#FFF" size={20} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 8 }}>
+                Email: <Text style={{ color: '#FFF', fontWeight: 'bold' }}>{editUserEmail}</Text>
+              </Text>
+
+              <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Số dư Xu (Coins):</Text>
+              <TextInput 
+                style={styles.addInput}
+                keyboardType="numeric"
+                value={editUserCoins}
+                onChangeText={setEditUserCoins}
+              />
+
+              <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Hạn dùng VIP:</Text>
+              <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 12 }}>
+                <TouchableOpacity 
+                  style={[styles.pickerTriggerBtn, { height: 42 }]} 
+                  onPress={() => setShowEditDatePicker(true)}
+                >
+                  <Text style={styles.pickerTriggerText}>
+                    📅 {editUserVipDate ? editUserVipDate.toLocaleDateString('vi-VN') : 'Chọn hạn VIP...'}
+                  </Text>
+                </TouchableOpacity>
+                
+                {editUserVipDate && (
+                  <TouchableOpacity 
+                    style={{ backgroundColor: 'rgba(255,69,58,0.1)', paddingHorizontal: 12, paddingVertical: 12, borderRadius: 10, borderWidth: 0.8, borderColor: 'rgba(255,69,58,0.4)' }}
+                    onPress={() => setEditUserVipDate(null)}
+                  >
+                    <Text style={{ color: '#FF453A', fontSize: 12, fontWeight: 'bold' }}>XÓA VIP</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {showEditDatePicker && (
+                <DateTimePicker
+                  value={editUserVipDate || new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={(event, date) => {
+                    setShowEditDatePicker(false);
+                    if (date) setEditUserVipDate(date);
+                  }}
+                />
+              )}
+
+              <TouchableOpacity 
+                style={[styles.submitBtn, { marginTop: 15, backgroundColor: COLORS.primary }]}
+                onPress={saveUserChanges}
+              >
+                <Text style={styles.submitBtnText}>LƯU THAY ĐỔI</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* MODAL: DUYỆT ĐƠN THỦ CÔNG */}
+      <Modal
+        visible={isManualModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsManualModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>DUYỆT ĐƠN THỦ CÔNG</Text>
+                <TouchableOpacity onPress={() => setIsManualModalVisible(false)}>
+                  <X color="#FFF" size={20} />
+                </TouchableOpacity>
+              </View>
+
+              <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 8 }}>
+                Nhập thông tin tài khoản / khóa kích hoạt để gửi cho khách hàng:
+              </Text>
+
+              <TextInput 
+                style={[styles.textArea, { height: 100, marginBottom: 15 }]}
+                placeholder="Nhập thông tin tài khoản (ví dụ: Tài khoản | Mật khẩu)..."
+                placeholderTextColor={COLORS.textMuted}
+                multiline
+                value={manualAccountText}
+                onChangeText={setManualAccountText}
+              />
+
+              <TouchableOpacity 
+                style={[styles.submitBtn, { backgroundColor: '#32D74B' }]}
+                onPress={() => {
+                  if (manualFulfillRow !== null) {
+                    fulfillOrderManual(manualFulfillRow, manualAccountText);
+                  }
+                }}
+              >
+                <Text style={styles.submitBtnText}>HOÀN TẤT & GỬI KHÁCH</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -1247,5 +2525,61 @@ const getStyles = (theme: typeof COLORS) => StyleSheet.create({
     color: '#FFF',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  floatingSaveBtn: {
+    position: 'absolute',
+    bottom: 20,
+    right: 20,
+    left: 20,
+    backgroundColor: '#32D74B',
+    borderRadius: 12,
+    flexDirection: 'row',
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#32D74B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  floatingSaveText: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 13,
+    letterSpacing: 0.8
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20
+  },
+  modalContainer: {
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalContent: {
+    backgroundColor: theme.surfaceSolid || '#1C1C1E',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 0.8,
+    borderColor: theme.border,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+    paddingBottom: 10,
+    borderBottomWidth: 0.8,
+    borderColor: theme.border,
+  },
+  modalTitle: {
+    color: theme.danger,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.8,
   }
 });
