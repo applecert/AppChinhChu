@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, Image, ActivityIndicator, ScrollView, Animated, InteractionManager, Alert, DeviceEventEmitter } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, Image, ActivityIndicator, ScrollView, Animated, InteractionManager, Alert, DeviceEventEmitter, TextInput } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,6 +8,7 @@ import { fetchRegularApps, AppItem } from '../../constants/data';
 import { ListDownloadBtn } from '../search';
 import { COLORS, SIZES, SHADOWS, SPRING, useThemeUpdate, TXT } from '../../constants/theme';
 import { TabTransition } from '../../components/ui/TabTransition';
+import { Search, X } from 'lucide-react-native';
 
 import { auth, db } from '../../firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
@@ -93,6 +94,7 @@ export default function AppsScreen() {
   const [categories, setCategories] = useState<string[]>(['Tất cả']);
   const [uiCat, setUiCat] = useState('Tất cả');
   const [listCat, setListCat] = useState('Tất cả');
+  const [searchQuery, setSearchQuery] = useState('');
   const styles = getStyles(COLORS);
   const shimmerOpacity = useRef(new Animated.Value(0.35)).current;
 
@@ -151,9 +153,21 @@ export default function AppsScreen() {
     InteractionManager.runAfterInteractions(() => { setListCat(cat); });
   };
 
-  const filteredApps = listCat === 'Tất cả' 
-    ? apps 
-    : apps.filter(a => a.category && a.category.trim().toLowerCase() === listCat.trim().toLowerCase());
+  const getSearchedApps = () => {
+    let list = listCat === 'Tất cả' 
+      ? apps 
+      : apps.filter(a => a.category && a.category.trim().toLowerCase() === listCat.trim().toLowerCase());
+      
+    if (searchQuery.trim() !== '') {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(app => 
+        String(app.name || '').toLowerCase().includes(q) || 
+        String(app.category || '').toLowerCase().includes(q) ||
+        String(app.sub || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  };
 
   const isLightMode = COLORS.background === '#F4F4F6';
 
@@ -161,7 +175,26 @@ export default function AppsScreen() {
     <TabTransition tabPath="/apps">
       <LinearGradient colors={COLORS.bgGradient} style={styles.container}>
         <StatusBar style={isLightMode ? 'dark' : 'light'} />
-      <View style={styles.header}><Text style={styles.largeTitle}>{TXT.appStoreTitle}</Text></View>
+      <View style={styles.header}>
+        <Text style={styles.largeTitle}>{TXT.appStoreTitle}</Text>
+        <View style={styles.searchBarContainer}>
+          <Search size={16} color={COLORS.textMuted} style={{ marginRight: 8 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Tìm kiếm ứng dụng..."
+            placeholderTextColor={COLORS.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+          />
+          {searchQuery !== '' && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+              <X size={16} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
 
       {loading ? (
         <View style={{ marginHorizontal: 16, backgroundColor: COLORS.surfaceCard, borderRadius: SIZES.radiusSquircle, borderWidth: 0.8, borderColor: COLORS.border, marginTop: 15, paddingHorizontal: 4 }}>
@@ -199,7 +232,7 @@ export default function AppsScreen() {
 
           <View style={{ flex: 1, opacity: uiCat !== listCat ? 0.35 : 1 }}>
             <FlatList
-              data={filteredApps}
+              data={getSearchedApps()}
               keyExtractor={(item) => item.id}
               renderItem={({ item }) => <RegularAppRow item={item} />}
               contentContainerStyle={styles.scrollContent}
@@ -210,6 +243,11 @@ export default function AppsScreen() {
               windowSize={3}
               onScroll={handleScroll}
               scrollEventThrottle={16}
+              ListEmptyComponent={
+                <Text style={{ color: COLORS.textMuted, textAlign: 'center', marginTop: 40, fontSize: 13 }}>
+                  Không tìm thấy ứng dụng nào.
+                </Text>
+              }
             />
           </View>
         </>
@@ -224,6 +262,24 @@ const getStyles = (theme: typeof COLORS) => StyleSheet.create({
   scrollContent: { paddingTop: 10, paddingBottom: 140 },
   header: { paddingTop: 60, paddingHorizontal: 20, marginBottom: 5 },
   largeTitle: { color: theme.text, fontSize: 34, fontWeight: '800', letterSpacing: -0.5 },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.background === '#F4F4F6' ? 'rgba(0,0,0,0.04)' : 'rgba(255,255,255,0.04)',
+    borderRadius: 10,
+    borderWidth: 0.8,
+    borderColor: theme.border,
+    paddingHorizontal: 12,
+    height: 42,
+    marginTop: 12,
+  },
+  searchInput: {
+    flex: 1,
+    color: theme.text,
+    fontSize: 14,
+    height: '100%',
+    padding: 0,
+  },
   
   categoryContainer: { borderBottomWidth: 0.8, borderBottomColor: theme.border, paddingBottom: 12, marginBottom: 5, marginTop: 15 },
   catScroll: { paddingHorizontal: 20 },
