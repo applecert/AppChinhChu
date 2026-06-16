@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES, SHADOWS, useThemeUpdate } from '../constants/theme';
 
 // 🔴 ĐÃ CẬP NHẬT FULL BỘ ICON TỪ LUCIDE GIỐNG Y HỆT WEB CỦA SẾP
-import { X, ShieldCheck, ChevronLeft, CalendarPlus, UserX, LayoutDashboard, Ticket, Banknote, Users, Crown, Gem, Trash2, Box, Search, PlusCircle, Layers, Flame, RefreshCw } from 'lucide-react-native';
+import { X, ShieldCheck, ChevronLeft, CalendarPlus, UserX, LayoutDashboard, Ticket, Banknote, Users, Crown, Gem, Trash2, Box, Search, PlusCircle, Layers, Flame, RefreshCw, Menu } from 'lucide-react-native';
 
 import { auth, db } from '../firebaseConfig';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -33,6 +33,7 @@ export default function AdminScreen() {
   
   // 🔴 TABS VÀ TÌM KIẾM KHÁCH HÀNG
   const [activeTab, setActiveTab] = useState('DASHBOARD'); 
+  const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [renderLimit, setRenderLimit] = useState(30);
 
@@ -1022,36 +1023,24 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
     <LinearGradient colors={COLORS.bgGradient} style={styles.container}>
       <StatusBar style="light" />
       <View style={styles.header}>
-        {!isStandaloneAdmin && (
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <ChevronLeft color="#FF453A" size={28} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {!isStandaloneAdmin ? (
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+              <ChevronLeft color="#FF453A" size={28} />
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity onPress={() => setIsMenuVisible(true)} style={styles.menuBtn}>
+            <Menu color="#FF453A" size={26} />
           </TouchableOpacity>
-        )}
+        </View>
         <Text style={styles.headerTitle}>ADMIN WORKSPACE</Text>
         <TouchableOpacity onPress={() => loadFirebaseData()}><Text style={{color: COLORS.primary, fontWeight: 'bold'}}>Tải lại</Text></TouchableOpacity>
       </View>
-      
-      <View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBar}>
-          {TABS.map(tab => {
-            const IconComponent = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <TouchableOpacity 
-                key={tab.id} 
-                onPress={() => {
-                  setActiveTab(tab.id);
-                  setProductRenderLimit(30);
-                  setRenderLimit(30);
-                }} 
-                style={[styles.tabBtn, isActive && styles.tabBtnActive]}
-              >
-                <IconComponent color={isActive ? '#FFF' : '#8E8E93'} size={14} style={{ marginRight: 4 }} />
-                <Text style={[styles.tabText, isActive && { color: '#FFF' }]}>{tab.label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+
+      <View style={styles.subheader}>
+        <Text style={styles.subheaderText}>
+          📌 {TABS.find(t => t.id === activeTab)?.label}
+        </Text>
       </View>
       
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -2342,6 +2331,54 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* MENU MODAL (HAMBURGER SIDEBAR / OVERLAY) */}
+      <Modal
+        visible={isMenuVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsMenuVisible(false)}
+      >
+        <View style={styles.menuOverlayContainer}>
+          <TouchableOpacity 
+            style={styles.menuOverlayBg} 
+            activeOpacity={1} 
+            onPress={() => setIsMenuVisible(false)}
+          />
+          <View style={styles.menuDrawer}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>DANH MỤC QUẢN TRỊ</Text>
+              <TouchableOpacity onPress={() => setIsMenuVisible(false)}>
+                <X color="#FFF" size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.menuList} showsVerticalScrollIndicator={false}>
+              {TABS.map(tab => {
+                const IconComponent = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <TouchableOpacity 
+                    key={tab.id} 
+                    onPress={() => {
+                      setActiveTab(tab.id);
+                      setProductRenderLimit(30);
+                      setRenderLimit(30);
+                      setIsMenuVisible(false);
+                    }} 
+                    style={[styles.menuItem, isActive && styles.menuItemActive]}
+                  >
+                    <IconComponent color={isActive ? '#FF453A' : '#8E8E93'} size={20} style={{ marginRight: 12 }} />
+                    <Text style={[styles.menuItemText, isActive && styles.menuItemTextActive]}>
+                      {tab.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -2581,5 +2618,83 @@ const getStyles = (theme: typeof COLORS) => StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.8,
+  },
+  menuBtn: {
+    padding: 4,
+  },
+  subheader: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 0.8,
+    borderColor: theme.border,
+    backgroundColor: 'rgba(255,255,255,0.01)',
+  },
+  subheaderText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  menuOverlayContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  menuOverlayBg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  menuDrawer: {
+    width: '75%',
+    maxWidth: 300,
+    height: '100%',
+    backgroundColor: '#1C1C1E',
+    borderRightWidth: 0.8,
+    borderColor: '#2C2C2E',
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingHorizontal: 15,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 0.8,
+    borderColor: '#2C2C2E',
+  },
+  menuTitle: {
+    color: '#FF453A',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  menuList: {
+    gap: 8,
+    paddingBottom: 40,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  menuItemActive: {
+    backgroundColor: 'rgba(255, 69, 58, 0.1)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF453A',
+  },
+  menuItemText: {
+    color: '#8E8E93',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  menuItemTextActive: {
+    color: '#FFF',
   }
 });
