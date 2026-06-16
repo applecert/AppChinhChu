@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Alert, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Switch, Image } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
@@ -23,6 +24,14 @@ export default function AdminScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  
+  useEffect(() => {
+    AsyncStorage.getItem('@admin_pin').then(savedPin => {
+      if (savedPin) {
+        handleLoginAdmin(savedPin);
+      }
+    });
+  }, []);
   
   // 🔴 THÊM TAB DASHBOARD VÀ GIFTCODES
   const [activeTab, setActiveTab] = useState('DASHBOARD'); 
@@ -87,11 +96,12 @@ export default function AdminScreen() {
     return Number(vipExpire) || 0;
   };
 
-  const handleLoginAdmin = async () => {
-    if (!pin) return Alert.alert("Lỗi", "Nhập mã PIN");
+  const handleLoginAdmin = async (targetPin?: string) => {
+    const pinToUse = targetPin || pin;
+    if (!pinToUse) return Alert.alert("Lỗi", "Nhập mã PIN");
     setIsVerifying(true);
     try {
-      const res = await fetch(`${SCRIPT_URL}?action=get_admin_data&pin=${encodeURIComponent(pin)}`);
+      const res = await fetch(`${SCRIPT_URL}?action=get_admin_data&pin=${encodeURIComponent(pinToUse)}`);
       const json = await res.json();
       if (json.success) { 
         setDataKho(json.dataKho || []); 
@@ -120,13 +130,21 @@ export default function AdminScreen() {
         setStats(prev => ({ ...prev, revenue: totalRev }));
         setInvStats(tempInv);
         setIsAuthenticated(true); 
-        loadFirebaseData(); 
-      } else { Alert.alert("Lỗi", "Sai mã PIN!"); }
+        if (targetPin) {
+          setPin(targetPin);
+        }
+        await AsyncStorage.setItem('@admin_pin', pinToUse);
+        loadFirebaseData(pinToUse); 
+      } else { 
+        Alert.alert("Lỗi", "Sai mã PIN!"); 
+        await AsyncStorage.removeItem('@admin_pin');
+      }
     } catch (e) { Alert.alert("Lỗi", "Mất kết nối"); }
     setIsVerifying(false);
   };
 
-  const loadFirebaseData = async () => {
+  const loadFirebaseData = async (activePin?: string) => {
+    const pinToUse = activePin || pin;
     const snapConfig = await getDoc(doc(db, 'settings', 'config'));
     if (snapConfig.exists()) {
       const data = snapConfig.data();
@@ -170,7 +188,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
 
     // Tải số lượng thiết bị đăng ký nhận thông báo từ Google Sheet
     try {
-      const resCount = await fetch(`${SCRIPT_URL}?action=get_push_tokens_count&pin=${encodeURIComponent(pin)}`);
+      const resCount = await fetch(`${SCRIPT_URL}?action=get_push_tokens_count&pin=${encodeURIComponent(pinToUse)}`);
       const jsonCount = await resCount.json();
       if (jsonCount.success) {
         setRegisteredDeviceCount(jsonCount.count);
@@ -181,7 +199,7 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
 
     // Tải danh sách thông báo đã hẹn giờ
     try {
-      const resSched = await fetch(`${SCRIPT_URL}?action=get_scheduled_pushes&pin=${encodeURIComponent(pin)}`);
+      const resSched = await fetch(`${SCRIPT_URL}?action=get_scheduled_pushes&pin=${encodeURIComponent(pinToUse)}`);
       const jsonSched = await resSched.json();
       if (jsonSched.success) {
         setScheduledPushes(jsonSched.data || []);
@@ -421,10 +439,10 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
           <View>
              <Text style={styles.title}>THỐNG KÊ HỆ THỐNG</Text>
              <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20}}>
-                <View style={styles.statCard}><View style={[styles.statIconBox, {backgroundColor: 'rgba(50,215,75,0.1)'}]}><Banknote color="#32D74B" size={24}/></View><Text style={styles.statLabel}>DOANH THU</Text><Text style={[styles.statValue, {color: '#32D74B'}]}>{stats.revenue.toLocaleString('vi-VN')}đ</Text></View>
-                <View style={styles.statCard}><View style={[styles.statIconBox, {backgroundColor: 'rgba(10,132,255,0.1)'}]}><Users color="#0A84FF" size={24}/></View><Text style={styles.statLabel}>NGƯỜI DÙNG</Text><Text style={styles.statValue}>{stats.totalUsers.toLocaleString()}</Text></View>
-                <View style={styles.statCard}><View style={[styles.statIconBox, {backgroundColor: 'rgba(255,215,0,0.1)'}]}><Crown color="#FFD700" size={24}/></View><Text style={styles.statLabel}>KHÁCH VIP</Text><Text style={styles.statValue}>{stats.totalVips.toLocaleString()}</Text></View>
-                <View style={styles.statCard}><View style={[styles.statIconBox, {backgroundColor: 'rgba(175,82,222,0.1)'}]}><Gem color="#AF52DE" size={24}/></View><Text style={styles.statLabel}>TỔNG XU</Text><Text style={[styles.statValue, {color: '#AF52DE'}]}>{stats.totalCoins.toLocaleString()}</Text></View>
+                <View style={styles.statCard}><View style={[styles.statIconBox, {backgroundColor: 'rgba(50,215,75,0.1)'}]}><Banknote color="#32D74B" size={18}/></View><Text style={styles.statLabel}>DOANH THU</Text><Text style={[styles.statValue, {color: '#32D74B'}]}>{stats.revenue.toLocaleString('vi-VN')}đ</Text></View>
+                <View style={styles.statCard}><View style={[styles.statIconBox, {backgroundColor: 'rgba(10,132,255,0.1)'}]}><Users color="#0A84FF" size={18}/></View><Text style={styles.statLabel}>NGƯỜI DÙNG</Text><Text style={styles.statValue}>{stats.totalUsers.toLocaleString()}</Text></View>
+                <View style={styles.statCard}><View style={[styles.statIconBox, {backgroundColor: 'rgba(255,215,0,0.1)'}]}><Crown color="#FFD700" size={18}/></View><Text style={styles.statLabel}>KHÁCH VIP</Text><Text style={styles.statValue}>{stats.totalVips.toLocaleString()}</Text></View>
+                <View style={styles.statCard}><View style={[styles.statIconBox, {backgroundColor: 'rgba(175,82,222,0.1)'}]}><Gem color="#AF52DE" size={18}/></View><Text style={styles.statLabel}>TỔNG XU</Text><Text style={[styles.statValue, {color: '#AF52DE'}]}>{stats.totalCoins.toLocaleString()}</Text></View>
              </View>
 
              <Text style={styles.title}>BÁO CÁO KHO TÀI KHOẢN</Text>
@@ -433,12 +451,12 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                 const percent = data.total > 0 ? Math.round((data.sold / data.total)*100) : 0;
                 return (
                   <View key={type} style={styles.invCard}>
-                    <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10}}>
-                      <Text style={{color: '#FFF', fontWeight: 'bold', fontSize: 16}}>{type}</Text>
-                      <Text style={{color: '#32D74B', fontWeight: '900', fontSize: 18}}>{data.available} <Text style={{fontSize: 12, color: '#888'}}>Tồn</Text></Text>
+                    <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}>
+                      <Text style={{color: '#FFF', fontWeight: 'bold', fontSize: 13}}>{type}</Text>
+                      <Text style={{color: '#32D74B', fontWeight: '900', fontSize: 14}}>{data.available} <Text style={{fontSize: 10, color: '#888'}}>Tồn</Text></Text>
                     </View>
-                    <View style={{height: 6, backgroundColor: '#333', borderRadius: 3, overflow: 'hidden'}}><View style={{height: '100%', width: `${percent}%`, backgroundColor: '#0A84FF'}} /></View>
-                    <Text style={{color: '#888', fontSize: 12, marginTop: 5, textAlign: 'right'}}>Đã bán: {data.sold} / {data.total}</Text>
+                    <View style={{height: 4, backgroundColor: '#333', borderRadius: 2, overflow: 'hidden'}}><View style={{height: '100%', width: `${percent}%`, backgroundColor: '#0A84FF'}} /></View>
+                    <Text style={{color: '#888', fontSize: 10, marginTop: 4, textAlign: 'right'}}>Đã bán: {data.sold} / {data.total}</Text>
                   </View>
                 )
              })}
@@ -454,20 +472,20 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
               const isVipActive = expireMillis > Date.now();
               return (
                 <View key={i} style={styles.userCard}>
-                  <View style={{marginBottom: 12}}>
+                  <View style={{marginBottom: 8}}>
                     <Text style={styles.userName}>{u.fullname || u.email}</Text>
                     <Text style={styles.userEmail}>{u.email}</Text>
-                    <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8}}>
+                    <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6}}>
                       {isVipActive ? ( <View style={styles.vipTag}><Text style={styles.vipTagText}>VIP: {new Date(expireMillis).toLocaleDateString('vi-VN')}</Text></View> ) : ( <View style={[styles.vipTag, {backgroundColor: '#333', borderColor: '#555'}]}><Text style={[styles.vipTagText, {color: '#888'}]}>Chưa VIP</Text></View> )}
-                      <Text style={{color: '#AF52DE', fontWeight: 'bold'}}><Gem size={12} color="#AF52DE" style={{marginBottom: -2}}/> {(u.coins || 0).toLocaleString()} Xu</Text>
+                      <Text style={{color: '#AF52DE', fontWeight: 'bold', fontSize: 11}}><Gem size={10} color="#AF52DE" style={{marginBottom: -2}}/> {(u.coins || 0).toLocaleString()} Xu</Text>
                     </View>
                   </View>
                   <View style={styles.actionRow}>
-                      <TouchableOpacity style={styles.actionBtn} onPress={() => addVipDays(u.id, u.vipExpire, 1)}><CalendarPlus color="#32D74B" size={16} style={{marginRight: 4}}/><Text style={styles.actionText}>1 Ngày</Text></TouchableOpacity>
-                      <TouchableOpacity style={styles.actionBtn} onPress={() => addVipDays(u.id, u.vipExpire, 7)}><CalendarPlus color="#32D74B" size={16} style={{marginRight: 4}}/><Text style={styles.actionText}>7 Ngày</Text></TouchableOpacity>
-                      <TouchableOpacity style={styles.actionBtn} onPress={() => addVipDays(u.id, u.vipExpire, 30)}><CalendarPlus color="#FFD700" size={16} style={{marginRight: 4}}/><Text style={[styles.actionText, {color: '#FFD700'}]}>1 Tháng</Text></TouchableOpacity>
+                      <TouchableOpacity style={styles.actionBtn} onPress={() => addVipDays(u.id, u.vipExpire, 1)}><CalendarPlus color="#32D74B" size={12} style={{marginRight: 4}}/><Text style={styles.actionText}>1 Ngày</Text></TouchableOpacity>
+                      <TouchableOpacity style={styles.actionBtn} onPress={() => addVipDays(u.id, u.vipExpire, 7)}><CalendarPlus color="#32D74B" size={12} style={{marginRight: 4}}/><Text style={styles.actionText}>7 Ngày</Text></TouchableOpacity>
+                      <TouchableOpacity style={styles.actionBtn} onPress={() => addVipDays(u.id, u.vipExpire, 30)}><CalendarPlus color="#FFD700" size={12} style={{marginRight: 4}}/><Text style={[styles.actionText, {color: '#FFD700'}]}>1 Tháng</Text></TouchableOpacity>
                   </View>
-                  <TouchableOpacity style={styles.cancelVipBtn} onPress={() => addVipDays(u.id, u.vipExpire, 0)}><UserX color="#FFF" size={16} style={{marginRight: 6}}/><Text style={{color: '#FFF', fontWeight: 'bold', fontSize: 13}}>Tước quyền VIP</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.cancelVipBtn} onPress={() => addVipDays(u.id, u.vipExpire, 0)}><UserX color="#FFF" size={12} style={{marginRight: 6}}/><Text style={{color: '#FFF', fontWeight: 'bold', fontSize: 11}}>Tước quyền VIP</Text></TouchableOpacity>
                 </View>
               )
             })}
@@ -488,8 +506,8 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
               <TouchableOpacity style={styles.submitBtn} onPress={handleAddAccount} disabled={isAdding}>{isAdding ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>BƠM VÀO KHO HỆ THỐNG</Text>}</TouchableOpacity>
             </View>
             <Text style={styles.title}>KHO GẦN ĐÂY</Text>
-            <View style={{backgroundColor: '#111', borderRadius: 16, borderWidth: 1, borderColor: '#222', overflow: 'hidden'}}>
-               {dataKho.slice(-5).reverse().map((row, idx) => { if (idx === dataKho.length - 1) return null; return ( <View key={idx} style={{flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderBottomColor: '#222'}}><View><Text style={{color: '#FFF', fontWeight: 'bold'}}>{row[0]}</Text><Text style={{color: '#8E8E93', fontSize: 12, marginTop: 4}}>{row[1]}</Text></View><Text style={{color: row[2] === 'SẴN SÀNG' ? '#32D74B' : '#FF453A', fontSize: 12, fontWeight: 'bold'}}>{row[2]}</Text></View> ) })}
+            <View style={{backgroundColor: '#111', borderRadius: 12, borderWidth: 1, borderColor: '#222', overflow: 'hidden'}}>
+               {dataKho.slice(-5).reverse().map((row, idx) => { if (idx === dataKho.length - 1) return null; return ( <View key={idx} style={{flexDirection: 'row', justifyContent: 'space-between', padding: 10, borderBottomWidth: 1, borderBottomColor: '#222'}}><View><Text style={{color: '#FFF', fontWeight: 'bold', fontSize: 13}}>{row[0]}</Text><Text style={{color: '#8E8E93', fontSize: 11, marginTop: 3}}>{row[1]}</Text></View><Text style={{color: row[2] === 'SẴN SÀNG' ? '#32D74B' : '#FF453A', fontSize: 11, fontWeight: 'bold'}}>{row[2]}</Text></View> ) })}
             </View>
           </View>
         )}
@@ -532,6 +550,25 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
         {/* TAB 5: HỆ THỐNG */}
         {activeTab === 'SETTINGS' && (
           <View>
+            <Text style={styles.title}>ĐĂNG XUẤT & BẢO MẬT</Text>
+            <View style={styles.userCard}>
+              <TouchableOpacity 
+                style={[styles.submitBtn, { backgroundColor: COLORS.danger, height: 42 }]} 
+                onPress={async () => {
+                  Alert.alert("Xác nhận đăng xuất", "Xóa mã PIN đã lưu và đăng xuất khỏi Admin Panel?", [
+                    { text: "Hủy", style: "cancel" },
+                    { text: "Đăng xuất", style: "destructive", onPress: async () => {
+                      await AsyncStorage.removeItem('@admin_pin');
+                      setPin('');
+                      setIsAuthenticated(false);
+                    }}
+                  ]);
+                }}
+              >
+                <Text style={styles.submitBtnText}>ĐĂNG XUẤT / RESET MÃ PIN</Text>
+              </TouchableOpacity>
+            </View>
+
             <Text style={styles.title}>CẤU HÌNH HỆ THỐNG APP</Text>
             <View style={styles.userCard}>
               <View style={styles.settingRow}>
@@ -904,73 +941,74 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
 
 const getStyles = (theme: typeof COLORS) => StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.background },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 60, paddingHorizontal: 20, paddingBottom: 15, borderBottomWidth: 0.8, borderColor: theme.border },
-  headerTitle: { color: theme.danger, fontSize: 18, fontWeight: '800', letterSpacing: 1 },
-  backBtn: { padding: 5, marginLeft: -5 },
-  tabBar: { paddingHorizontal: 20, paddingVertical: 15, gap: 10 },
-  tabBtn: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center', borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 0.8, borderColor: theme.border },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Platform.OS === 'ios' ? 50 : 25, paddingHorizontal: 12, paddingBottom: 10, borderBottomWidth: 0.8, borderColor: theme.border },
+  headerTitle: { color: theme.danger, fontSize: 14, fontWeight: '800', letterSpacing: 0.8 },
+  backBtn: { padding: 4, marginLeft: -4 },
+  tabBar: { paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  tabBtn: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 8, alignItems: 'center', borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.03)', borderWidth: 0.8, borderColor: theme.border },
   tabBtnActive: { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: 'rgba(255,255,255,0.2)' },
-  tabText: { color: theme.textMuted, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
-  content: { padding: 20, paddingBottom: 80 },
+  tabText: { color: theme.textMuted, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
+  content: { padding: 12, paddingBottom: 60 },
 
-  loginContainer: { flex: 1, backgroundColor: theme.background, justifyContent: 'center', padding: 20 },
-  closeBtn: { position: 'absolute', top: 60, right: 20, zIndex: 10 },
-  loginBox: { backgroundColor: theme.surfaceSolid, padding: 30, borderRadius: 24, alignItems: 'center', borderWidth: 0.8, borderColor: theme.border },
-  logoCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255, 69, 58, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  loginTitle: { color: theme.text, fontSize: 24, fontWeight: '800', marginBottom: 25 },
-  inputGroup: { width: '100%', height: 55, backgroundColor: theme.background === '#F4F4F6' ? 'rgba(0,0,0,0.05)' : '#000', borderRadius: 16, marginBottom: 20, paddingHorizontal: 15, borderWidth: 0.8, borderColor: theme.border, justifyContent: 'center' },
-  input: { color: theme.text, fontSize: 18, textAlign: 'center', fontWeight: 'bold' },
-  submitBtn: { backgroundColor: theme.danger, width: '100%', height: 55, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  submitBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  loginContainer: { flex: 1, backgroundColor: theme.background, justifyContent: 'center', padding: 15 },
+  closeBtn: { position: 'absolute', top: 50, right: 15, zIndex: 10 },
+  loginBox: { backgroundColor: theme.surfaceSolid, padding: 20, borderRadius: 16, alignItems: 'center', borderWidth: 0.8, borderColor: theme.border },
+  logoCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: 'rgba(255, 69, 58, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
+  loginTitle: { color: theme.text, fontSize: 18, fontWeight: '800', marginBottom: 20 },
+  inputGroup: { width: '100%', height: 46, backgroundColor: theme.background === '#F4F4F6' ? 'rgba(0,0,0,0.05)' : '#000', borderRadius: 12, marginBottom: 15, paddingHorizontal: 12, borderWidth: 0.8, borderColor: theme.border, justifyContent: 'center' },
+  input: { color: theme.text, fontSize: 15, textAlign: 'center', fontWeight: 'bold' },
+  submitBtn: { backgroundColor: theme.danger, width: '100%', height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  submitBtnText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
 
-  title: { color: theme.textMuted, fontSize: 13, fontWeight: '800', marginBottom: 15, letterSpacing: 1 },
-  userCard: { backgroundColor: theme.surfaceCard, padding: 20, borderRadius: 16, marginBottom: 15, borderWidth: 0.8, borderColor: theme.border },
-  userName: { color: theme.text, fontSize: 18, fontWeight: '700' },
-  userEmail: { color: theme.textMuted, fontSize: 14, marginTop: 4 },
-  vipTag: { alignSelf: 'flex-start', backgroundColor: 'rgba(48, 209, 88, 0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 0.8, borderColor: 'rgba(48, 209, 88, 0.5)' },
-  vipTagText: { color: theme.success, fontSize: 12, fontWeight: 'bold' },
+  title: { color: theme.textMuted, fontSize: 11, fontWeight: '800', marginBottom: 10, letterSpacing: 0.8, marginTop: 10 },
+  userCard: { backgroundColor: theme.surfaceCard, padding: 12, borderRadius: 12, marginBottom: 10, borderWidth: 0.8, borderColor: theme.border },
+  userName: { color: theme.text, fontSize: 14, fontWeight: '700' },
+  userEmail: { color: theme.textMuted, fontSize: 11, marginTop: 2 },
+  vipTag: { alignSelf: 'flex-start', backgroundColor: 'rgba(48, 209, 88, 0.15)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, borderWidth: 0.8, borderColor: 'rgba(48, 209, 88, 0.5)' },
+  vipTagText: { color: theme.success, fontSize: 10, fontWeight: 'bold' },
   
-  actionRow: { flexDirection: 'row', gap: 8, marginTop: 15 },
-  actionBtn: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.03)', paddingVertical: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 0.8, borderColor: theme.border },
-  actionText: { color: theme.text, fontSize: 12, fontWeight: 'bold' },
-  cancelVipBtn: { flexDirection: 'row', marginTop: 8, backgroundColor: theme.danger, paddingVertical: 12, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  actionRow: { flexDirection: 'row', gap: 6, marginTop: 10 },
+  actionBtn: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.03)', paddingVertical: 8, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 0.8, borderColor: theme.border },
+  actionText: { color: theme.text, fontSize: 10, fontWeight: 'bold' },
+  cancelVipBtn: { flexDirection: 'row', marginTop: 6, backgroundColor: theme.danger, paddingVertical: 8, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   
-  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, paddingBottom: 15, borderBottomWidth: 0.8, borderBottomColor: theme.border },
-  settingText: { color: theme.text, fontSize: 16, fontWeight: '600' },
+  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingBottom: 10, borderBottomWidth: 0.8, borderBottomColor: theme.border },
+  settingText: { color: theme.text, fontSize: 13, fontWeight: '600' },
   textArea: { 
     backgroundColor: theme.background === '#F4F4F6' ? 'rgba(0,0,0,0.04)' : 'rgba(0,0,0,0.3)', 
     color: theme.text, 
-    padding: 15, 
-    borderRadius: 12, 
-    height: 120, 
+    padding: 12, 
+    borderRadius: 10, 
+    height: 90, 
     textAlignVertical: 'top', 
     borderWidth: 0.8, 
     borderColor: theme.border, 
-    fontSize: 15 
+    fontSize: 13 
   },
   addInput: { 
     backgroundColor: theme.background === '#F4F4F6' ? 'rgba(0,0,0,0.04)' : 'rgba(0,0,0,0.3)', 
-    borderRadius: 12, 
-    height: 50, 
+    borderRadius: 10, 
+    height: 42, 
     color: theme.text, 
-    paddingHorizontal: 15, 
-    marginBottom: 10, 
+    paddingHorizontal: 12, 
+    marginBottom: 8, 
     borderWidth: 0.8, 
-    borderColor: theme.border 
+    borderColor: theme.border,
+    fontSize: 13
   },
 
-  // Dashbard & Inventory
-  statCard: { width: '48%', backgroundColor: theme.surfaceCard, padding: 15, borderRadius: 16, borderWidth: 0.8, borderColor: theme.border },
-  statIconBox: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  statLabel: { color: theme.textMuted, fontSize: 10, fontWeight: '900', letterSpacing: 1, marginBottom: 4 },
-  statValue: { color: theme.text, fontSize: 22, fontWeight: '900' },
-  invCard: { backgroundColor: theme.surfaceCard, padding: 20, borderRadius: 16, borderWidth: 0.8, borderColor: theme.border, marginBottom: 10 },
+  // Dashboard & Inventory
+  statCard: { width: '48%', backgroundColor: theme.surfaceCard, padding: 10, borderRadius: 12, borderWidth: 0.8, borderColor: theme.border },
+  statIconBox: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  statLabel: { color: theme.textMuted, fontSize: 8, fontWeight: '900', letterSpacing: 0.8, marginBottom: 2 },
+  statValue: { color: theme.text, fontSize: 16, fontWeight: '900' },
+  invCard: { backgroundColor: theme.surfaceCard, padding: 12, borderRadius: 12, borderWidth: 0.8, borderColor: theme.border, marginBottom: 8 },
 
-  typeBtn: { flex: 1, flexDirection: 'row', height: 45, borderRadius: 10, borderWidth: 0.8, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  typeBtn: { flex: 1, flexDirection: 'row', height: 38, borderRadius: 8, borderWidth: 0.8, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', gap: 6 },
   typeBtnActive: { backgroundColor: 'rgba(255,255,255,0.08)', borderColor: '#FFF' },
-  typeBtnText: { color: theme.textMuted, fontSize: 13, fontWeight: 'bold' },
+  typeBtnText: { color: theme.textMuted, fontSize: 11, fontWeight: 'bold' },
 
-  gcCard: { flexDirection: 'row', backgroundColor: theme.surfaceCard, padding: 20, borderRadius: 16, borderWidth: 0.8, borderColor: theme.border, marginBottom: 10, alignItems: 'center' },
+  gcCard: { flexDirection: 'row', backgroundColor: theme.surfaceCard, padding: 12, borderRadius: 12, borderWidth: 0.8, borderColor: theme.border, marginBottom: 8, alignItems: 'center' },
 
   // Custom Time Selector styles
   customTimeContainer: {
