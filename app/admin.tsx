@@ -11,6 +11,7 @@ import { COLORS, SIZES, SHADOWS, useThemeUpdate } from '../constants/theme';
 import { X, ShieldCheck, ChevronLeft, CalendarPlus, UserX, LayoutDashboard, Ticket, Banknote, Users, Crown, Gem, Trash2, Box, Search } from 'lucide-react-native';
 
 import { auth, db } from '../firebaseConfig';
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 // Nhập thêm deleteDoc, serverTimestamp để xử lý Giftcode
 import { doc, getDoc, setDoc, collection, getDocs, updateDoc, Timestamp, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -24,13 +25,27 @@ export default function AdminScreen() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pin, setPin] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+
+  // States hỗ trợ xác thực Firebase Auth Admin
+  const [adminEmail, setAdminEmail] = useState('mquitran@gmail.com');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [firebaseAuthenticated, setFirebaseAuthenticated] = useState(false);
   
   useEffect(() => {
-    AsyncStorage.getItem('@admin_pin').then(savedPin => {
-      if (savedPin) {
-        handleLoginAdmin(savedPin);
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (user && user.email?.toLowerCase() === 'mquitran@gmail.com') {
+        setFirebaseAuthenticated(true);
+        // Sau khi Firebase Auth tải xong phiên đăng nhập hợp lệ, chạy PIN tự động nếu đã lưu
+        AsyncStorage.getItem('@admin_pin').then(savedPin => {
+          if (savedPin) {
+            handleLoginAdmin(savedPin);
+          }
+        });
+      } else {
+        setFirebaseAuthenticated(false);
       }
     });
+    return unsubscribeAuth;
   }, []);
   
   // 🔴 THÊM TAB DASHBOARD VÀ GIFTCODES
@@ -115,6 +130,20 @@ export default function AdminScreen() {
     if (!pinToUse) return Alert.alert("Lỗi", "Nhập mã PIN");
     setIsVerifying(true);
     try {
+      // 1. Xác thực Firebase Auth nếu chưa đăng nhập đúng tài khoản Admin
+      const currentEmail = auth.currentUser?.email;
+      if (!currentEmail || currentEmail.toLowerCase() !== 'mquitran@gmail.com') {
+        if (!targetPin && !adminPassword) {
+          setIsVerifying(false);
+          return Alert.alert("Lỗi", "Vui lòng nhập mật khẩu tài khoản Admin Firebase");
+        }
+        // Chỉ chạy đăng nhập khi người dùng thao tác nhập thủ công
+        if (!targetPin) {
+          await signInWithEmailAndPassword(auth, adminEmail.trim(), adminPassword);
+        }
+      }
+
+      // 2. Xác thực PIN với Google Sheets API
       const res = await fetch(`${SCRIPT_URL}?action=get_admin_data&pin=${encodeURIComponent(pinToUse)}`);
       const json = await res.json();
       if (json.success) { 
@@ -153,7 +182,9 @@ export default function AdminScreen() {
         Alert.alert("Lỗi", "Sai mã PIN!"); 
         await AsyncStorage.removeItem('@admin_pin');
       }
-    } catch (e) { Alert.alert("Lỗi", "Mất kết nối"); }
+    } catch (e: any) { 
+      Alert.alert("Lỗi xác thực", e.message || "Mật khẩu Admin hoặc mã PIN không chính xác!"); 
+    }
     setIsVerifying(false);
   };
 
@@ -414,8 +445,53 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
            <View style={[styles.loginBox, SHADOWS.glowDark]}>
               <View style={styles.logoCircle}><ShieldCheck color="#FF453A" size={40} /></View>
               <Text style={styles.loginTitle}>Trung Tâm Điều Hành</Text>
-              <View style={styles.inputGroup}><TextInput style={styles.input} placeholder="Mã PIN..." placeholderTextColor={COLORS.textMuted} secureTextEntry value={pin} onChangeText={setPin} /></View>
-              <TouchableOpacity style={styles.submitBtn} onPress={handleLoginAdmin} disabled={isVerifying}>{isVerifying ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>XÁC NHẬN</Text>}</TouchableOpacity>
+              
+              {!firebaseAuthenticated && (
+                <>
+                  <Text style={{ color: COLORS.textMuted, fontSize: 11, marginBottom: 10, textAlign: 'center' }}>
+                    Đăng nhập tài khoản Admin Firebase
+                  </Text>
+                  <View style={styles.inputGroup}>
+                    <TextInput 
+                      style={styles.input} 
+                      placeholder="Email Admin..." 
+                      placeholderTextColor={COLORS.textMuted} 
+                      value={adminEmail} 
+                      onChangeText={setAdminEmail} 
+                      autoCapitalize="none"
+                      keyboardType="email-address"
+                    />
+                  </View>
+                  <View style={styles.inputGroup}>
+                    <TextInput 
+                      style={styles.input} 
+                      placeholder="Mật khẩu Admin..." 
+                      placeholderTextColor={COLORS.textMuted} 
+                      secureTextEntry 
+                      value={adminPassword} 
+                      onChangeText={setAdminPassword} 
+                    />
+                  </View>
+                  <View style={{ height: 0.8, backgroundColor: 'rgba(255,255,255,0.1)', width: '100%', marginVertical: 12 }} />
+                </>
+              )}
+
+              <Text style={{ color: COLORS.textMuted, fontSize: 11, marginBottom: 10, textAlign: 'center' }}>
+                Xác thực mã PIN hệ thống
+              </Text>
+              <View style={styles.inputGroup}>
+                <TextInput 
+                  style={styles.input} 
+                  placeholder="Mã PIN..." 
+                  placeholderTextColor={COLORS.textMuted} 
+                  secureTextEntry 
+                  value={pin} 
+                  onChangeText={setPin} 
+                />
+              </View>
+              <TouchableOpacity style={styles.submitBtn} onPress={() => handleLoginAdmin()} disabled={isVerifying}>
+                {isVerifying ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>XÁC NHẬN</Text>}
+              </TouchableOpacity>
            </View>
         </KeyboardAvoidingView>
       </LinearGradient>
@@ -609,6 +685,11 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
                       await AsyncStorage.removeItem('@admin_pin');
                       setPin('');
                       setIsAuthenticated(false);
+                      try {
+                        await signOut(auth);
+                      } catch (err) {
+                        console.warn("Failed to sign out from Firebase:", err);
+                      }
                     }}
                   ]);
                 }}
