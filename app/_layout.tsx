@@ -45,7 +45,7 @@ export default function RootLayout() {
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
   const [isCheckingPermission, setIsCheckingPermission] = useState(true);
   const [userSkippedUpdate, setUserSkippedUpdate] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(auth.currentUser?.email?.toLowerCase() === 'mquitran@gmail.com');
+  const [isAdmin, setIsAdmin] = useState(process.env.EXPO_PUBLIC_APP_TYPE === 'admin' && auth.currentUser?.email?.toLowerCase() === 'mquitran@gmail.com');
   const [forceUpdateConfig, setForceUpdateConfig] = useState<{
     show: boolean;
     msg: string;
@@ -128,7 +128,7 @@ export default function RootLayout() {
     const appStateSub = AppState.addEventListener('change', handleAppStateChange);
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
-      setIsAdmin(user?.email?.toLowerCase() === 'mquitran@gmail.com');
+      setIsAdmin(process.env.EXPO_PUBLIC_APP_TYPE === 'admin' && user?.email?.toLowerCase() === 'mquitran@gmail.com');
       try {
         if (Platform.OS === 'web') return;
         const { status } = await Notifications.getPermissionsAsync();

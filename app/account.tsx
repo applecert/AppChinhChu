@@ -403,7 +403,7 @@ export default function AccountScreen() {
         </View>
 
         {/* ADMIN AREA */}
-        {userData?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase() && (
+        {process.env.EXPO_PUBLIC_APP_TYPE === 'admin' && userData?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase() && (
           <>
             <Text style={styles.sectionTitle}>{TXT.adminArea.toUpperCase()}</Text>
             <View style={[styles.groupCard, SHADOWS.glowCard]}>
