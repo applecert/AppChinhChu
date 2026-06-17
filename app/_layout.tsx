@@ -3,7 +3,7 @@ import { StyleSheet, View, Text, Dimensions, Animated, Image, Easing, Platform, 
 import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ShieldCheck, Sparkles, BellRing } from 'lucide-react-native';
+import { ShieldCheck, Sparkles, BellRing, Wrench } from 'lucide-react-native';
 import { initAppThemeAndLang, useThemeUpdate, COLORS } from '../constants/theme';
 import * as Notifications from 'expo-notifications';
 import * as Linking from 'expo-linking';
@@ -51,6 +51,11 @@ export default function RootLayout() {
     msg: string;
     url: string;
     allowSkip: boolean;
+  } | null>(null);
+  const [maintenanceConfig, setMaintenanceConfig] = useState<{
+    show: boolean;
+    msg: string;
+    title: string;
   } | null>(null);
 
   const checkNotificationPermission = async () => {
@@ -163,6 +168,16 @@ export default function RootLayout() {
           setForceUpdateConfig(null);
           setUserSkippedUpdate(false);
         }
+
+        if (data.maintenanceShow) {
+          setMaintenanceConfig({
+            show: true,
+            msg: data.maintenanceMsg || 'Hệ thống đang bảo trì định kỳ để nâng cấp dịch vụ. Vui lòng quay lại sau.',
+            title: data.maintenanceTitle || 'HỆ THỐNG BẢO TRÌ',
+          });
+        } else {
+          setMaintenanceConfig(null);
+        }
       }
     }, (error) => {
       console.warn("Failed to subscribe to settings/config:", error);
@@ -262,11 +277,26 @@ export default function RootLayout() {
 
   const pathname = usePathname();
   const showForceUpdate = forceUpdateConfig && forceUpdateConfig.show && !userSkippedUpdate && pathname !== '/admin' && !isAdmin;
+  const showMaintenance = maintenanceConfig && maintenanceConfig.show && pathname !== '/admin' && !isAdmin;
 
   return (
     <>
       <StatusBar style="light" />
-      {showForceUpdate ? (
+      {showMaintenance ? (
+        <LinearGradient colors={['#0A0A0E', '#161622', '#0A0A0E']} style={styles.blockContainer}>
+          <View style={styles.blockContent}>
+            <View style={[styles.blockIconCircle, { backgroundColor: 'rgba(255, 149, 0, 0.12)', borderColor: 'rgba(255, 149, 0, 0.25)' }]}>
+              <Wrench color="#FF9500" size={48} strokeWidth={1.5} />
+            </View>
+            <Text style={styles.blockTitle}>{maintenanceConfig.title}</Text>
+            <ScrollView style={{ maxHeight: 200, marginVertical: 10 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 5 }}>
+              <Text style={styles.blockMsg}>
+                {maintenanceConfig.msg}
+              </Text>
+            </ScrollView>
+          </View>
+        </LinearGradient>
+      ) : showForceUpdate ? (
         <LinearGradient colors={['#0A0A0E', '#161622', '#0A0A0E']} style={styles.blockContainer}>
           <View style={styles.blockContent}>
             <View style={[styles.blockIconCircle, { backgroundColor: 'rgba(255, 69, 58, 0.12)', borderColor: 'rgba(255, 69, 58, 0.25)' }]}>
