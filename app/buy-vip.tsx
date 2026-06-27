@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Image, ActivityIndicator, Alert, ScrollView, Platform, Animated } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GlassView } from '../components/ui/GlassView';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -135,7 +136,66 @@ export default function BuyVipScreen() {
 
   const handleCreateOrder = async () => {
     if (!auth.currentUser) return;
+
+    // 1. Đọc chứng chỉ hiện tại từ AsyncStorage để lấy UDID/UUID
+    let activeCert = null;
+    try {
+      const certsStr = await AsyncStorage.getItem('@saved_certs');
+      const activeCertId = await AsyncStorage.getItem('@active_cert_id');
+      const certs = certsStr ? JSON.parse(certsStr) : [];
+      activeCert = certs.find((c: any) => c.id === activeCertId) || certs[0];
+    } catch (e) {
+      console.warn("Lỗi đọc chứng chỉ:", e);
+    }
+
+    if (!activeCert) {
+      Alert.alert(
+        'Yêu cầu chứng chỉ',
+        'Để tránh lạm dụng hệ thống, sếp vui lòng thêm chứng chỉ P12 vào Thư viện trước khi mua VIP nhé!',
+        [
+          { text: 'Hủy', style: 'cancel' },
+          { text: 'Thêm ngay', onPress: () => router.push('/settings') }
+        ]
+      );
+      return;
+    }
+
+    const currentCertUdid = activeCert.udid || activeCert.uuid || '';
+    if (!currentCertUdid) {
+      Alert.alert('Chứng chỉ không hợp lệ', 'Không thể lấy thông tin định danh từ chứng chỉ này.');
+      return;
+    }
+
     setIsCreatingOrder(true);
+
+    try {
+      // 2. Lấy thông tin user hiện tại từ Firestore
+      const userRef = doc(db, 'users', auth.currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        
+        // Nếu đã có UDID ràng buộc
+        if (userData.boundUdid) {
+          if (userData.boundUdid !== currentCertUdid) {
+            Alert.alert(
+              'Tài khoản đã bị ràng buộc',
+              `Tài khoản VIP này đã được liên kết cố định với một thiết bị/chứng chỉ khác (UDID: ${userData.boundUdid}) và không thể thay đổi nhằm tránh lạm dụng!`
+            );
+            setIsCreatingOrder(false);
+            return;
+          }
+        } else {
+          // Nếu chưa có UDID ràng buộc, thực hiện ràng buộc thiết bị này luôn khi tạo đơn
+          await updateDoc(userRef, { boundUdid: currentCertUdid });
+        }
+      }
+    } catch (err: any) {
+      Alert.alert('Lỗi xác thực thiết bị', err.message || 'Không thể kiểm tra thông tin tài khoản.');
+      setIsCreatingOrder(false);
+      return;
+    }
+
     const newOrderId = `IPA${auth.currentUser.uid.substring(0, 4).toUpperCase()}${Date.now().toString().slice(-4)}`;
     try {
       const res = await fetch(`${SCRIPT_URL}?action=create_order&orderId=${newOrderId}&uid=${auth.currentUser.uid}&amount=${selectedPack.price}&coins=${selectedPack.days}`);
@@ -155,17 +215,17 @@ export default function BuyVipScreen() {
       const res = await fetch(`${SCRIPT_URL}?action=check_stc_payment&orderId=${orderId}&amount=${selectedPack.price}`);
       const json = await res.json();
       if (json.success) {
-        const uid = auth.currentUser!.uid;
-        const snap = await getDoc(doc(db, 'users', uid));
-        const now = Date.now();
-        const currentExpiry = snap.exists() ? (snap.data().vipExpiration || now) : now;
-        const addedDays = parseInt(json.coins) || selectedPack.days; 
-        const newExpiry = (currentExpiry > now ? currentExpiry : now) + (addedDays * 24 * 60 * 60 * 1000); 
-
-        await updateDoc(doc(db, 'users', uid), { isVip: true, vipExpiration: newExpiry });
-        Alert.alert('🎉 Lên VIP Thành Công!', `Tài khoản đã được cộng thêm ${addedDays} ngày VIP!`, [{ text: 'Trải nghiệm ngay', onPress: () => router.back() }]);
-      } else { Alert.alert('Chưa nhận được tiền', json.error || 'Vui lòng chờ 10 giây!'); }
-    } catch (error) { Alert.alert('Lỗi', 'Mất kết nối.'); }
+        Alert.alert(
+          '🎉 Đơn Hàng Hoàn Tất!', 
+          `Hệ thống đã xác thực giao dịch thành công. Trạng thái VIP của bạn đã được cập nhật tự động!`, 
+          [{ text: 'Đồng ý', onPress: () => router.back() }]
+        );
+      } else { 
+        Alert.alert('Chưa nhận được tiền', json.error || 'Vui lòng chờ khoảng 10 giây và nhấn kiểm tra lại!'); 
+      }
+    } catch (error) { 
+      Alert.alert('Lỗi', 'Không thể kết nối đến máy chủ.'); 
+    }
     setIsChecking(false);
   };
 

@@ -337,6 +337,23 @@ export default function AppDetailScreen() {
         if (found) activeCert = found;
       }
 
+      // Đối khớp UDID với Firestore để chống chia sẻ tài khoản
+      const currentCertUdid = activeCert.udid || activeCert.uuid || '';
+      const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        if (userData.boundUdid && currentCertUdid && userData.boundUdid !== currentCertUdid) {
+          Alert.alert(
+            'Thiết bị không hợp lệ',
+            `Tài khoản VIP này đã được liên kết cố định với một thiết bị/chứng chỉ khác (UDID: ${userData.boundUdid}) và không thể sử dụng trên thiết bị này.`
+          );
+          if (bgMode && IpaSigner) {
+            try { await IpaSigner.endBackgroundTask(); } catch (e) {}
+          }
+          return;
+        }
+      }
+
       setDownloadState('Đang tải...');
       const safeName = "app_" + Date.now();
       const rawIpaPath = FileSystem.cacheDirectory + safeName + '.ipa';

@@ -12,6 +12,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Notifications from 'expo-notifications';
 
 import { startStaticServer } from '../utils/staticServer';
+import { auth, db } from '../firebaseConfig';
+import { doc, getDoc } from 'firebase/firestore';
 
 const IpaSigner = (() => {
   if (Platform.OS === 'web') return null;
@@ -80,6 +82,66 @@ export const ListDownloadBtn = ({ app }: { app: AppItem }) => {
       if (activeId) {
         const found = certs.find((c: any) => c.id === activeId);
         if (found) activeCert = found;
+      }
+
+      // Kiểm tra đăng nhập và đối khớp UDID chống chia sẻ tài khoản VIP
+      if (!auth.currentUser) {
+        Alert.alert(
+          'Cần Đăng Nhập', 
+          'Vui lòng đăng nhập tài khoản trước khi cài đặt ứng dụng!', 
+          [
+            { text: 'Hủy', style: 'cancel' },
+            { text: 'Đăng nhập', onPress: () => router.push('/account') }
+          ]
+        );
+        if (bgMode && IpaSigner) {
+          try { await IpaSigner.endBackgroundTask(); } catch (e) {}
+        }
+        return;
+      }
+
+      const getVipMillis = (vipExpire: any) => {
+        if (!vipExpire) return 0;
+        if (typeof vipExpire.toMillis === 'function') return vipExpire.toMillis();
+        if (vipExpire.seconds) return vipExpire.seconds * 1000;
+        return Number(vipExpire) || 0;
+      };
+
+      const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        const expireMillis = getVipMillis(userData.vipExpire);
+        const isVipActive = expireMillis > Date.now();
+        
+        const isVipApp = app.id.startsWith('vip_') || app.sub?.includes('VIP') || app.sub?.includes('Độc Quyền');
+        if (isVipApp && !isVipActive) {
+          Alert.alert(
+            'Yêu cầu Đặc Quyền VIP', 
+            'Để tải kho ứng dụng độc quyền và không chứa quảng cáo, Sếp vui lòng nâng cấp gói VIP nhé!', 
+            [
+              { text: 'Hủy', style: 'cancel' }, 
+              { text: 'Nâng Cấp Ngay', onPress: () => router.push('/buy-vip') }
+            ]
+          );
+          if (bgMode && IpaSigner) {
+            try { await IpaSigner.endBackgroundTask(); } catch (e) {}
+          }
+          return;
+        }
+
+        if (isVipActive) {
+          const currentCertUdid = activeCert.udid || activeCert.uuid || '';
+          if (userData.boundUdid && currentCertUdid && userData.boundUdid !== currentCertUdid) {
+            Alert.alert(
+              'Thiết bị không hợp lệ',
+              `Tài khoản VIP này đã được liên kết cố định với một thiết bị/chứng chỉ khác (UDID: ${userData.boundUdid}) và không thể sử dụng trên thiết bị này.`
+            );
+            if (bgMode && IpaSigner) {
+              try { await IpaSigner.endBackgroundTask(); } catch (e) {}
+            }
+            return;
+          }
+        }
       }
 
       setStatus('Đang tải...');

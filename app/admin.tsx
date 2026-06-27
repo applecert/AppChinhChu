@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, SIZES, SHADOWS, useThemeUpdate } from '../constants/theme';
 
 // 🔴 ĐÃ CẬP NHẬT FULL BỘ ICON TỪ LUCIDE GIỐNG Y HỆT WEB CỦA SẾP
-import { X, ShieldCheck, ChevronLeft, CalendarPlus, UserX, LayoutDashboard, Ticket, Banknote, Users, Crown, Gem, Trash2, Box, Search, PlusCircle, Layers, Flame, RefreshCw, Menu, Settings } from 'lucide-react-native';
+import { X, ShieldCheck, ChevronLeft, CalendarPlus, UserX, LayoutDashboard, Ticket, Banknote, Users, Crown, Gem, Trash2, Box, Search, PlusCircle, Layers, Flame, RefreshCw, Menu, Settings, Wrench } from 'lucide-react-native';
 
 import { auth, db } from '../firebaseConfig';
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -180,6 +180,10 @@ export default function AdminScreen() {
   const [gcLimit, setGcLimit] = useState('100');
   const [isCreatingGc, setIsCreatingGc] = useState(false);
 
+  // State bảo trì phiên bản
+  const [versionsList, setVersionsList] = useState<any[]>([]);
+  const [newVersionInput, setNewVersionInput] = useState('');
+
   const TABS = [
     { id: 'DASHBOARD', label: 'TỔNG QUAN', icon: LayoutDashboard },
     { id: 'MEMBERS', label: 'KHÁCH HÀNG', icon: Users },
@@ -192,6 +196,7 @@ export default function AdminScreen() {
     { id: 'KHOTK', label: 'KHO APPLE ID', icon: Box },
     { id: 'GIFTCODES', label: 'GIFTCODE', icon: Ticket },
     { id: 'PUSH', label: 'THÔNG BÁO PUSH', icon: Users },
+    { id: 'VERSIONS', label: 'BẢO TRÌ BẢN', icon: Wrench },
     { id: 'SETTINGS', label: 'CÀI ĐẶT', icon: Settings }
   ];
 
@@ -323,6 +328,17 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
       }
     } catch (e) {
       console.warn("Failed to fetch scheduled pushes:", e);
+    }
+
+    // 9. Tải danh sách phiên bản bảo trì
+    try {
+      const resVer = await fetch(`${SCRIPT_URL}?action=get_versions&pin=${encodeURIComponent(pinToUse)}`);
+      const jsonVer = await resVer.json();
+      if (jsonVer.success) {
+        setVersionsList(jsonVer.versions || []);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch versions list:", e);
     }
 
     // 6. Tải Lịch sử nạp & Doanh thu từ Google Sheet (action=get_admin_data)
@@ -946,6 +962,68 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
           } catch (error) { Alert.alert("Lỗi", "Không thể cập nhật."); }
       }}
     ]);
+  };
+
+  const updateVersionConfig = (version: string, key: string, val: any) => {
+    setVersionsList(prev => prev.map(v => {
+      if (v.version === version) {
+        return { ...v, [key]: val };
+      }
+      return v;
+    }));
+    setHasUnsavedChanges(true);
+  };
+
+  const deleteVersionConfig = (version: string) => {
+    Alert.alert("Xác nhận", `Xóa cấu hình phiên bản ${version}? (Nhấn Lưu máy chủ ở cuối để đồng bộ)`, [
+      { text: "Hủy", style: "cancel" },
+      { text: "Xóa", style: "destructive", onPress: () => {
+          setVersionsList(prev => prev.filter(v => v.version !== version));
+          setHasUnsavedChanges(true);
+        }
+      }
+    ]);
+  };
+
+  const addNewVersionConfig = () => {
+    const ver = newVersionInput.trim();
+    if (!ver) return Alert.alert("Lỗi", "Vui lòng nhập tên phiên bản");
+    if (versionsList.some(v => v.version === ver)) {
+      return Alert.alert("Lỗi", "Phiên bản này đã tồn tại trong danh sách");
+    }
+    const newVer = {
+      version: ver,
+      maintenanceShow: false,
+      maintenanceMsg: 'Hệ thống đang bảo trì phiên bản này để nâng cấp dịch vụ. Vui lòng quay lại sau.',
+      maintenanceTitle: 'BẢO TRÌ PHIÊN BẢN'
+    };
+    setVersionsList(prev => [newVer, ...prev]);
+    setNewVersionInput('');
+    setHasUnsavedChanges(true);
+  };
+
+  const saveVersionsToServer = async () => {
+    setIsVerifying(true);
+    try {
+      const response = await fetch(`${SCRIPT_URL}?action=admin_save_version_config&pin=${encodeURIComponent(pin)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `configs=${encodeURIComponent(JSON.stringify(versionsList))}`
+      });
+      const json = await response.json();
+      if (json.success) {
+        Alert.alert("Thành công", "Đã lưu cấu hình bảo trì phiên bản lên Google Sheets!");
+        setHasUnsavedChanges(false);
+        loadFirebaseData();
+      } else {
+        Alert.alert("Lỗi", json.error || "Không thể lưu cấu hình.");
+      }
+    } catch (e: any) {
+      Alert.alert("Lỗi kết nối", e.message || "Không thể kết nối đến máy chủ.");
+    }
+    setIsVerifying(false);
   };
 
   const handleAddAccount = async () => {
@@ -2495,12 +2573,95 @@ Ký và cài đặt file IPA ngoại tuyến của riêng bạn`
             </View>
           </View>
         )}
+
+        {/* TAB: BẢO TRÌ PHIÊN BẢN */}
+        {activeTab === 'VERSIONS' && (
+          <View>
+            <Text style={styles.title}>THÊM PHIÊN BẢN CẦN QUẢN LÝ</Text>
+            <View style={styles.userCard}>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <TextInput 
+                  style={[styles.addInput, { flex: 1, marginBottom: 0 }]}
+                  placeholder="Ví dụ: 1.0.1, 1.0.2..."
+                  placeholderTextColor={COLORS.textMuted}
+                  value={newVersionInput}
+                  onChangeText={setNewVersionInput}
+                />
+                <TouchableOpacity 
+                  style={{ backgroundColor: COLORS.primary, height: 42, paddingHorizontal: 16, borderRadius: 10, justifyContent: 'center', alignItems: 'center' }}
+                  onPress={addNewVersionConfig}
+                >
+                  <Text style={{ color: COLORS.textDark, fontWeight: 'bold', fontSize: 13 }}>THÊM</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <Text style={styles.title}>DANH SÁCH PHIÊN BẢN & TRẠNG THÁI BẢO TRÌ</Text>
+            {versionsList.length === 0 ? (
+              <View style={styles.userCard}>
+                <Text style={{ color: '#8E8E93', textAlign: 'center', fontSize: 13 }}>Chưa ghi nhận phiên bản nào từ client hoặc Sheets.</Text>
+              </View>
+            ) : (
+              versionsList.map((v, idx) => (
+                <View key={idx} style={[styles.userCard, { marginBottom: 12 }]}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingBottom: 6, borderBottomWidth: 0.5, borderColor: COLORS.border }}>
+                    <Text style={{ color: COLORS.primary, fontWeight: '900', fontSize: 15 }}>
+                      Bản {v.version}
+                    </Text>
+                    
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Text style={{ color: v.maintenanceShow ? '#FF453A' : '#8E8E93', fontSize: 11, fontWeight: 'bold' }}>
+                        {v.maintenanceShow ? 'ĐANG BẢO TRÌ' : 'HOẠT ĐỘNG'}
+                      </Text>
+                      <Switch 
+                        value={v.maintenanceShow}
+                        onValueChange={(val) => updateVersionConfig(v.version, 'maintenanceShow', val)}
+                      />
+                    </View>
+                  </View>
+
+                  <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Tiêu đề bảo trì:</Text>
+                  <TextInput 
+                    style={[styles.addInput, { height: 34 }]}
+                    placeholder="Nhập tiêu đề bảo trì..."
+                    placeholderTextColor={COLORS.textMuted}
+                    value={v.maintenanceTitle || ''}
+                    onChangeText={(txt) => updateVersionConfig(v.version, 'maintenanceTitle', txt)}
+                  />
+
+                  <Text style={{ color: '#8E8E93', fontSize: 11, marginBottom: 2 }}>Thông báo bảo trì:</Text>
+                  <TextInput 
+                    style={[styles.textArea, { height: 60 }]}
+                    placeholder="Nhập nội dung bảo trì..."
+                    placeholderTextColor={COLORS.textMuted}
+                    multiline
+                    value={v.maintenanceMsg || ''}
+                    onChangeText={(txt) => updateVersionConfig(v.version, 'maintenanceMsg', txt)}
+                  />
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+                    <Text style={{ color: '#555', fontSize: 10 }}>
+                      Cập nhật: {v.updatedAt ? new Date(v.updatedAt).toLocaleString('vi-VN') : 'Không rõ'}
+                    </Text>
+                    
+                    <TouchableOpacity 
+                      style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(255,69,58,0.1)', borderRadius: 6 }}
+                      onPress={() => deleteVersionConfig(v.version)}
+                    >
+                      <Text style={{ color: '#FF453A', fontSize: 11, fontWeight: 'bold' }}>Xóa Bản</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {hasUnsavedChanges && (
         <TouchableOpacity 
           style={styles.floatingSaveBtn} 
-          onPress={saveAllConfigsToServer}
+          onPress={activeTab === 'VERSIONS' ? saveVersionsToServer : saveAllConfigsToServer}
         >
           <RefreshCw color="#FFF" size={16} style={{ marginRight: 6 }} />
           <Text style={styles.floatingSaveText}>LƯU THAY ĐỔI MÁY CHỦ</Text>

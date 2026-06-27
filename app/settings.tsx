@@ -34,6 +34,7 @@ interface CertItem {
   uuid?: string;
   expirationDate?: string;
   isExpired?: boolean;
+  udid?: string;
 }
 
 function AnimatedSwitch({ value, onValueChange, styles }: { value: boolean; onValueChange: () => void; styles: any }) {
@@ -173,13 +174,24 @@ const parseMobileProvisionData = (base64Data: string) => {
     const teamIdMatch = xml.match(/<key>TeamIdentifier<\/key>\s*<array>\s*<string>([^<]+)<\/string>/);
     if (teamIdMatch) teamId = teamIdMatch[1];
 
+    let udid = '';
+    const udidMatch = xml.match(/<key>ProvisionedDevices<\/key>\s*<array>([\s\S]*?)<\/array>/);
+    if (udidMatch) {
+      const arrayContent = udidMatch[1];
+      const singleUdidMatch = arrayContent.match(/<string>([^<]+)<\/string>/);
+      if (singleUdidMatch) {
+        udid = singleUdidMatch[1];
+      }
+    }
+
     return {
       profileName: name || 'Không rõ',
       teamName: teamName || 'Không rõ',
       teamId: teamId || 'Không rõ',
       uuid: uuid || '',
       expirationDate: formattedDate,
-      isExpired
+      isExpired,
+      udid
     };
   } catch (e) {
     console.error("Lỗi parse mobileprovision:", e);
@@ -605,7 +617,8 @@ export default function SettingsScreen() {
         teamId: parsed?.teamId || 'Không rõ',
         uuid: parsed?.uuid || '',
         expirationDate: parsed?.expirationDate || 'Không rõ',
-        isExpired: parsed?.isExpired || false
+        isExpired: parsed?.isExpired || false,
+        udid: parsed?.udid
       };
       
       const updatedCerts = [newCert, ...savedCerts]; 

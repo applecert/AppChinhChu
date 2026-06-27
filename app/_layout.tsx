@@ -13,6 +13,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import Constants from 'expo-constants';
 
 const GOOGLE_SHEET_WEBHOOK = "https://script.google.com/macros/s/AKfycbyXnH5KjwQVafxGW_W2KlpDY9KHBx_0TAmaNZBqUaPz9WR8T1PDKwB9un37fNA_YO7pmg/exec";
+const APP_VERSION = Constants.expoConfig?.version || '1.0.0';
 
 if (Platform.OS !== 'web') {
   Notifications.setNotificationHandler({
@@ -107,6 +108,24 @@ export default function RootLayout() {
     }
   };
 
+  const checkMaintenanceFromServer = async () => {
+    try {
+      const res = await fetch(`${GOOGLE_SHEET_WEBHOOK}?action=check_version_maintenance&version=${encodeURIComponent(APP_VERSION)}`);
+      const json = await res.json();
+      if (json.success && json.maintenance) {
+        setMaintenanceConfig({
+          show: true,
+          msg: json.msg || 'Hệ thống đang bảo trì phiên bản này để nâng cấp dịch vụ. Vui lòng quay lại sau.',
+          title: json.title || 'HỆ THỐNG BẢO TRÌ',
+        });
+      } else {
+        setMaintenanceConfig(null);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch maintenance status:", e);
+    }
+  };
+
   useEffect(() => {
     if (Platform.OS === 'web') return;
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
@@ -124,10 +143,12 @@ export default function RootLayout() {
 
   useEffect(() => {
     checkNotificationPermission();
+    checkMaintenanceFromServer();
 
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active') {
         checkNotificationPermission();
+        checkMaintenanceFromServer();
       }
     };
     const appStateSub = AppState.addEventListener('change', handleAppStateChange);
@@ -167,16 +188,6 @@ export default function RootLayout() {
         } else {
           setForceUpdateConfig(null);
           setUserSkippedUpdate(false);
-        }
-
-        if (data.maintenanceShow) {
-          setMaintenanceConfig({
-            show: true,
-            msg: data.maintenanceMsg || 'Hệ thống đang bảo trì định kỳ để nâng cấp dịch vụ. Vui lòng quay lại sau.',
-            title: data.maintenanceTitle || 'HỆ THỐNG BẢO TRÌ',
-          });
-        } else {
-          setMaintenanceConfig(null);
         }
       }
     }, (error) => {
