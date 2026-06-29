@@ -215,6 +215,40 @@ export default function BuyVipScreen() {
       const res = await fetch(`${SCRIPT_URL}?action=check_stc_payment&orderId=${orderId}&amount=${selectedPack.price}`);
       const json = await res.json();
       if (json.success) {
+        // Cập nhật VIP trực tiếp trên Firestore từ phía Client vì Client đã đăng nhập (mở rộng quyền)
+        try {
+          if (auth.currentUser) {
+            const userRef = doc(db, 'users', auth.currentUser.uid);
+            const userSnap = await getDoc(userRef);
+            let currentExpiry = Date.now();
+            if (userSnap.exists()) {
+              const userData = userSnap.data();
+              if (userData.vipExpire) {
+                let docExpiry = 0;
+                if (typeof userData.vipExpire.toMillis === 'function') {
+                  docExpiry = userData.vipExpire.toMillis();
+                } else if (userData.vipExpire.seconds) {
+                  docExpiry = userData.vipExpire.seconds * 1000;
+                } else {
+                  docExpiry = Number(userData.vipExpire) || 0;
+                }
+                if (docExpiry > currentExpiry) {
+                  currentExpiry = docExpiry;
+                }
+              }
+            }
+            const addedDays = selectedPack.days;
+            const newExpiry = new Date(currentExpiry + (addedDays * 24 * 60 * 60 * 1000));
+            
+            await updateDoc(userRef, {
+              isVip: true,
+              vipExpire: newExpiry
+            });
+          }
+        } catch (fbError) {
+          console.warn("Lỗi cập nhật VIP client-side:", fbError);
+        }
+
         Alert.alert(
           '🎉 Đơn Hàng Hoàn Tất!', 
           `Hệ thống đã xác thực giao dịch thành công. Trạng thái VIP của bạn đã được cập nhật tự động!`, 
