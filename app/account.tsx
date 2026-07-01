@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, ScrollView, Image, TouchableOpacity, Alert, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Dimensions } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Image, TouchableOpacity, Alert, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Dimensions, Animated, LayoutAnimation, UIManager } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { WebView } from 'react-native-webview';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { useRouter } from 'expo-router'; 
 import { GlassView } from '../components/ui/GlassView';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -46,6 +51,32 @@ export default function AccountScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [sysPopup, setSysPopup] = useState({ show: false, msg: '' });
+  
+  const [captchaState, setCaptchaState] = useState<'idle' | 'checking' | 'interactive' | 'success'>('idle');
+  const captchaTimeoutRef = useRef<any>(null);
+  
+  const buttonScale = useRef(new Animated.Value(1)).current;
+  
+  const handlePressIn = () => {
+    Animated.spring(buttonScale, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(buttonScale, {
+      toValue: 1,
+      friction: 3,
+      tension: 40,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const toggleRegisterMode = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsRegisterMode(!isRegisterMode);
+  };
 
   useEffect(() => {
     let unsubDoc: any;
@@ -63,23 +94,180 @@ export default function AccountScreen() {
       }
       setIsLoading(false);
     });
-    return () => { unsubscribeAuth(); if (unsubDoc) unsubDoc(); };
+    return () => { 
+      unsubscribeAuth(); 
+      if (unsubDoc) unsubDoc(); 
+      if (captchaTimeoutRef.current) clearTimeout(captchaTimeoutRef.current);
+    };
   }, []);
+
+  const turnstileHtml = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+      <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+      <style>
+        body {
+          margin: 0;
+          padding: 0;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          background-color: transparent;
+        }
+      </style>
+  </head>
+  <body>
+      <div class="cf-turnstile" 
+           data-sitekey="0x4AAAAAADuG_qcsGlFOiiqT" 
+           data-callback="onTurnstileSuccess"
+           data-expired-callback="onTurnstileExpired"
+           data-error-callback="onTurnstileError"
+           data-theme="${isLight ? 'light' : 'dark'}"></div>
+  
+      <script>
+          function onTurnstileSuccess(token) {
+              if (window.ReactNativeWebView) {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'success', token: token }));
+              }
+          }
+          function onTurnstileExpired() {
+              if (window.ReactNativeWebView) {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'expired' }));
+              }
+          }
+          function onTurnstileError() {
+              if (window.ReactNativeWebView) {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'error' }));
+              }
+          }
+      </script>
+  </body>
+  </html>
+  `;
+
+  const registerWithCaptcha = async (captchaToken: string) => {
+    console.log("[Register] Starting registration with captcha token:", captchaToken.substring(0, 15) + "...");
+    setIsLoading(true);
+    try {
+      const payload = {
+        email: email.trim(),
+        password: password,
+        username: fullname.trim() || email.split('@')[0],
+        captchaToken: captchaToken,
+        captchaType: "turnstile",
+      };
+      console.log("[Register] Sending payload:", JSON.stringify(payload));
+      
+      const response = await fetch("https://www.ipaviet.site/api/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      console.log("[Register] Response status:", response.status);
+      const responseText = await response.text();
+      console.log("[Register] Response text:", responseText);
+
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (jsonErr) {
+        console.error("[Register] Failed to parse JSON response:", jsonErr);
+        throw new Error("Invalid server response format");
+      }
+
+      if (response.ok && result.success) {
+        console.log("[Register] Success! Signing in with Firebase...");
+        await signInWithEmailAndPassword(auth, email, password);
+        console.log("[Register] Firebase sign in completed.");
+        fetch(GOOGLE_SHEET_WEBHOOK, { method: 'POST', body: JSON.stringify({ email, action: "Tạo Tài Khoản", amount: "0", status: "Thành công" }) }).catch((e)=>{
+          console.error("[Register] Webhook error:", e);
+        });
+      } else {
+        console.log("[Register] Failed on server:", result.message);
+        Alert.alert(TXT.errorLabel, result.message || (TXT.langName === 'English' ? 'Registration failed!' : 'Đăng ký thất bại!'));
+      }
+    } catch (error: any) {
+      console.error("[Register] Caught error during registration:", error);
+      Alert.alert(TXT.errorLabel, TXT.langName === 'English' ? `Network error or registration service is offline. Details: ${error?.message || error}` : `Lỗi kết nối mạng hoặc dịch vụ đăng ký đang ngoại tuyến. Chi tiết: ${error?.message || error}`);
+    } finally {
+      console.log("[Register] Done, setting isLoading to false.");
+      setIsLoading(false);
+      setCaptchaState('idle');
+    }
+  };
+
+  const handleCaptchaMessage = async (event: any) => {
+    try {
+      // Check if it's a valid JSON string (our Turnstile script returns stringified JSON)
+      const data = JSON.parse(event.nativeEvent.data);
+      console.log("[Register] Captcha event received:", data.type);
+      
+      if (data.type === 'success' && data.token) {
+        if (captchaTimeoutRef.current) {
+          clearTimeout(captchaTimeoutRef.current);
+          captchaTimeoutRef.current = null;
+        }
+        setCaptchaState('success');
+        await registerWithCaptcha(data.token);
+      } else if (data.type === 'expired') {
+        if (captchaTimeoutRef.current) {
+          clearTimeout(captchaTimeoutRef.current);
+          captchaTimeoutRef.current = null;
+        }
+        setCaptchaState('idle');
+        setIsLoading(false);
+        Alert.alert(TXT.errorLabel, TXT.langName === 'English' ? 'Verification token expired. Please try again.' : 'Mã xác thực đã hết hạn, vui lòng thử lại.');
+      } else if (data.type === 'error') {
+        if (captchaTimeoutRef.current) {
+          clearTimeout(captchaTimeoutRef.current);
+          captchaTimeoutRef.current = null;
+        }
+        setCaptchaState('idle');
+        setIsLoading(false);
+        Alert.alert(TXT.errorLabel, TXT.langName === 'English' ? 'CAPTCHA verification failed. Please try again.' : 'Xác thực CAPTCHA thất bại, vui lòng thử lại.');
+      }
+    } catch (err) {
+      // Ignore messages from Turnstile's internal iframe calls that aren't JSON
+      console.log("[Register] Non-JSON message from WebView ignored:", event.nativeEvent.data?.substring(0, 50) + "...");
+    }
+  };
 
   const handleAuth = async () => {
     if (!email || !password || (isRegisterMode && !fullname)) return Alert.alert(TXT.errorLabel, TXT.langName === 'English' ? 'Please fill in all fields!' : 'Nhập đủ thông tin!');
+    
+    // Tactile animation scale down & up
+    Animated.sequence([
+      Animated.timing(buttonScale, { toValue: 0.95, duration: 80, useNativeDriver: true }),
+      Animated.timing(buttonScale, { toValue: 1, duration: 120, useNativeDriver: true }),
+    ]).start();
+
     setIsLoading(true);
     try {
       if (isRegisterMode) {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        const newUserData = { fullname, email: email.toLowerCase(), coins: 0 };
-        await setDoc(doc(db, 'users', cred.user.uid), newUserData);
-        fetch(GOOGLE_SHEET_WEBHOOK, { method: 'POST', body: JSON.stringify({ email, action: "Tạo Tài Khoản", amount: "0", status: "Thành công" }) }).catch(()=>{});
+        if (captchaTimeoutRef.current) clearTimeout(captchaTimeoutRef.current);
+        console.log("[Register] Initializing background Turnstile verification...");
+        setCaptchaState('checking');
+        
+        // Start 2.5s timer. If Turnstile resolves passively before this, we proceed silently.
+        // If not, we fall back to displaying the interactive challenge Modal.
+        captchaTimeoutRef.current = setTimeout(() => {
+          console.log("[Register] Turnstile did not resolve passively within 2.5s. Showing interactive Modal.");
+          setCaptchaState('interactive');
+        }, 2500);
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
-    } catch (error: any) { Alert.alert(TXT.errorLabel, TXT.langName === 'English' ? 'Incorrect login credentials!' : 'Thông tin sai!'); }
-    finally { setIsLoading(false); }
+    } catch (error: any) { 
+      Alert.alert(TXT.errorLabel, TXT.langName === 'English' ? 'Incorrect login credentials!' : 'Thông tin sai!'); 
+    } finally { 
+      if (!isRegisterMode) setIsLoading(false); 
+    }
   };
 
   const handleLogout = async () => {
@@ -206,18 +394,94 @@ export default function AccountScreen() {
                   <TextInput style={styles.input} placeholder={TXT.passwordPlaceholder} placeholderTextColor={COLORS.textMuted} secureTextEntry value={password} onChangeText={setPassword} />
                 </View>
                 
-                <TouchableOpacity style={styles.authBtn} activeOpacity={0.8} onPress={handleAuth} disabled={isLoading}>
-                  <LinearGradient colors={COLORS.primaryGradient} start={{x:0, y:0}} end={{x:1, y:0}} style={styles.authBtnGradient}>
-                    {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.authBtnText}>{isRegisterMode ? TXT.registerBtnText : TXT.loginBtnText}</Text>}
-                  </LinearGradient>
-                </TouchableOpacity>
+                <Animated.View style={{ transform: [{ scale: buttonScale }], width: '100%' }}>
+                  <TouchableOpacity 
+                    style={styles.authBtn} 
+                    activeOpacity={0.9} 
+                    onPress={handleAuth} 
+                    disabled={isLoading}
+                    onPressIn={handlePressIn}
+                    onPressOut={handlePressOut}
+                  >
+                    <LinearGradient colors={COLORS.primaryGradient} start={{x:0, y:0}} end={{x:1, y:0}} style={styles.authBtnGradient}>
+                      {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.authBtnText}>{isRegisterMode ? TXT.registerBtnText : TXT.loginBtnText}</Text>}
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </Animated.View>
                 
-                <TouchableOpacity style={{marginTop: 24}} onPress={() => setIsRegisterMode(!isRegisterMode)}>
+                <TouchableOpacity style={{marginTop: 24}} onPress={toggleRegisterMode}>
                   <Text style={styles.authSwitchText}>{isRegisterMode ? TXT.switchLoginText : TXT.switchRegisterText}</Text>
                 </TouchableOpacity>
               </View>
            </View>
         </KeyboardAvoidingView>
+        
+        {/* BACKGROUND CAPTCHA CHECKING WIDGET */}
+        {captchaState === 'checking' && (
+          <View style={{ position: 'absolute', top: -1000, left: -1000, width: 302, height: 67, overflow: 'hidden' }}>
+            <WebView
+              originWhitelist={['*']}
+              source={{ html: turnstileHtml, baseUrl: 'https://www.ipaviet.site' }}
+              style={{ width: 302, height: 67, backgroundColor: 'transparent' }}
+              onMessage={handleCaptchaMessage}
+              onError={() => {
+                console.log("[Register] Background CAPTCHA widget failed to load.");
+              }}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              scalesPageToFit={false}
+              scrollEnabled={false}
+              mixedContentMode="always"
+            />
+          </View>
+        )}
+
+        {/* CLOUDFLARE TURNSTILE CAPTCHA MODAL */}
+        <Modal visible={captchaState === 'interactive'} transparent animationType="slide">
+          <View style={styles.modalBg}>
+            <View style={[styles.modalBox, SHADOWS.glowDark, { padding: 20, width: '90%', maxWidth: 350 }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 15 }}>
+                <Text style={[styles.modalTitle, { marginBottom: 0, fontSize: 18 }]}>
+                  {TXT.langName === 'English' ? 'Security Verification' : 'Xác minh bảo mật'}
+                </Text>
+                <TouchableOpacity onPress={() => {
+                  if (captchaTimeoutRef.current) clearTimeout(captchaTimeoutRef.current);
+                  setCaptchaState('idle');
+                  setIsLoading(false);
+                }}>
+                  <X color={COLORS.textMuted} size={20} />
+                </TouchableOpacity>
+              </View>
+              
+              <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: 'center', marginBottom: 15 }}>
+                {TXT.langName === 'English' 
+                  ? 'Please complete the verification below to proceed.' 
+                  : 'Vui lòng hoàn thành xác minh bên dưới để tiếp tục.'}
+              </Text>
+
+              <View style={{ width: 302, height: 67, overflow: 'hidden', borderRadius: 8, backgroundColor: 'transparent', alignSelf: 'center', marginBottom: 10 }}>
+                {captchaState === 'interactive' && (
+                  <WebView
+                    originWhitelist={['*']}
+                    source={{ html: turnstileHtml, baseUrl: 'https://www.ipaviet.site' }}
+                    style={{ width: 302, height: 67, backgroundColor: 'transparent' }}
+                    onMessage={handleCaptchaMessage}
+                    onError={() => {
+                      Alert.alert(TXT.errorLabel, TXT.langName === 'English' ? 'Failed to load CAPTCHA widget.' : 'Không thể tải widget CAPTCHA.');
+                      setCaptchaState('idle');
+                      setIsLoading(false);
+                    }}
+                    javaScriptEnabled={true}
+                    domStorageEnabled={true}
+                    scalesPageToFit={false}
+                    scrollEnabled={false}
+                    mixedContentMode="always"
+                  />
+                )}
+              </View>
+            </View>
+          </View>
+        </Modal>
       </LinearGradient>
     );
   }
@@ -370,8 +634,12 @@ export default function AccountScreen() {
           <View style={styles.groupInside}>
             {renderRow(Palette, TXT.setupThemeRow, TXT.openLabel, '#8E8E93', false, false, () => navigateFromModal('/settings'))}
             <View style={styles.divider} />
-            {renderRow(Film, 'Rạp phim online', 'VPhim', '#FFB822', false, false, () => navigateFromModal('/movie'))}
-            <View style={styles.divider} />
+            {process.env.EXPO_PUBLIC_APP_TYPE === 'movie' && (
+              <>
+                {renderRow(Film, 'Rạp phim online', 'VPhim', '#FFB822', false, false, () => navigateFromModal('/movie'))}
+                <View style={styles.divider} />
+              </>
+            )}
             {renderRow(CloudDownload, TXT.cloudStorage, '5 GB', '#8E8E93', false, false)}
             <View style={styles.divider} />
             {renderRow(Clock, TXT.history, TXT.langName === 'English' ? 'Lookup' : 'Tra cứu', '#8E8E93', true, false)}

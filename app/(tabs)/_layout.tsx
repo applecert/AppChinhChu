@@ -1,9 +1,9 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import {
   View, TouchableOpacity, StyleSheet, Dimensions, Text,
-  Platform, DeviceEventEmitter, Animated,
+  Platform, DeviceEventEmitter, Animated, PanResponder,
 } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GlassView } from '../../components/ui/GlassView';
 import * as Haptics from 'expo-haptics';
@@ -24,7 +24,7 @@ const TAB_CONFIG = [
 ] as const;
 
 // ─── Single Tab Icon with independent micro-animations ───────────────────────
-function TabIcon({ name, isFocused }: { name: string; isFocused: boolean }) {
+function TabIcon({ name, isFocused, index, slideAnim }: { name: string; isFocused: boolean; index: number; slideAnim: Animated.Value }) {
   const isLight = COLORS.background === '#F4F4F6';
   const config  = TAB_CONFIG.find(c => c.name === name);
   const symbol  = config ? (isFocused ? config.iconActive : config.icon) : 'house';
@@ -37,29 +37,19 @@ function TabIcon({ name, isFocused }: { name: string; isFocused: boolean }) {
   };
   const tabLabel = labelMap[name] || name;
 
-  // Icon scale: bounce when becoming focused
-  const iconScale   = useRef(new Animated.Value(1)).current;
   const iconOpacity = useRef(new Animated.Value(isFocused ? 1 : 0.5)).current;
-  const pillScale   = useRef(new Animated.Value(isFocused ? 1 : 0.8)).current;
-  const pillOpacity = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
   const labelOpacity = useRef(new Animated.Value(isFocused ? 1 : 0.55)).current;
 
   const prevFocused = useRef(isFocused);
 
   useEffect(() => {
     if (isFocused && !prevFocused.current) {
-      // Newly focused: pulse icon + expand pill
-      pulseAnim(iconScale, 1.22).start();
       Animated.parallel([
-        Animated.spring(pillScale,   { toValue: 1,    ...SPRINGS.bounce }),
-        Animated.timing(pillOpacity, { toValue: 1,    duration: 180, useNativeDriver: true }),
         Animated.timing(labelOpacity,{ toValue: 1,    duration: 200, useNativeDriver: true }),
         Animated.timing(iconOpacity, { toValue: 1,    duration: 180, useNativeDriver: true }),
       ]).start();
     } else if (!isFocused && prevFocused.current) {
       Animated.parallel([
-        Animated.spring(pillScale,   { toValue: 0.75, ...SPRINGS.snappy }),
-        Animated.timing(pillOpacity, { toValue: 0,    duration: 150, useNativeDriver: true }),
         Animated.timing(labelOpacity,{ toValue: 0.55, duration: 160, useNativeDriver: true }),
         Animated.timing(iconOpacity, { toValue: 0.5,  duration: 180, useNativeDriver: true }),
       ]).start();
@@ -69,14 +59,23 @@ function TabIcon({ name, isFocused }: { name: string; isFocused: boolean }) {
 
   const activeColor   = isLight ? '#000000' : '#FFFFFF';
   const inactiveColor = isLight ? '#8E8E93' : 'rgba(255,255,255,0.45)';
-  const pillBg        = isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.12)';
+
+  // Interpolate scales based on distance to the sliding water droplet pill
+  // This creates a realistic "refraction zoom/bend" lens effect as the droplet moves!
+  const iconScale = slideAnim.interpolate({
+    inputRange: [index - 1, index, index + 1],
+    outputRange: [1, 1.25, 1],
+    extrapolate: 'clamp',
+  });
+
+  const labelScale = slideAnim.interpolate({
+    inputRange: [index - 1, index, index + 1],
+    outputRange: [1, 1.15, 1],
+    extrapolate: 'clamp',
+  });
 
   return (
     <View style={styles.iconWrapper}>
-      <Animated.View style={[
-        styles.iconPill,
-        { backgroundColor: pillBg, transform: [{ scale: pillScale }], opacity: pillOpacity },
-      ]} />
       <Animated.View style={{ transform: [{ scale: iconScale }], opacity: iconOpacity }}>
         <IconSymbol name={symbol} size={21} color={isFocused ? activeColor : inactiveColor} />
       </Animated.View>
@@ -84,7 +83,8 @@ function TabIcon({ name, isFocused }: { name: string; isFocused: boolean }) {
         styles.tabLabel,
         { color: isFocused ? activeColor : inactiveColor,
           fontWeight: isFocused ? '700' : '500',
-          opacity: labelOpacity },
+          opacity: labelOpacity,
+          transform: [{ scale: labelScale }] },
       ]}>
         {tabLabel}
       </Animated.Text>
@@ -103,6 +103,22 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
   const barScale   = useRef(new Animated.Value(1)).current;
   // Bar opacity for very smooth transitions
   const barOpacity = useRef(new Animated.Value(1)).current;
+
+  // Liquid droplet animation values
+  const slideAnim = useRef(new Animated.Value(state.index)).current;
+  const stretchAnim = useRef(new Animated.Value(1)).current;
+  const flattenAnim = useRef(new Animated.Value(1)).current;
+  const isDragging = useRef(false);
+
+  // ⚠️ Fix closure bug: PanResponder is created once but state/navigation change.
+  // Store latest values in refs so gesture handlers always read fresh data.
+  const stateRef = useRef(state);
+  const navigationRef = useRef(navigation);
+  const visibleRoutesRef = useRef<any[]>([]);
+  useEffect(() => {
+    stateRef.current = state;
+    navigationRef.current = navigation;
+  });
 
   const showBar = useCallback(() => {
     Animated.parallel([
@@ -125,9 +141,151 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
   // Always re-show when active tab changes
   useEffect(() => { showBar(); }, [state.index]);
 
+  const animatePill = (toIndex: number) => {
+    Animated.parallel([
+      Animated.spring(slideAnim, {
+        toValue: toIndex,
+        friction: 6,
+        tension: 50,
+        useNativeDriver: true,
+      }),
+      Animated.sequence([
+        Animated.timing(stretchAnim, {
+          toValue: 1.35,
+          duration: 140,
+          useNativeDriver: true,
+        }),
+        Animated.spring(stretchAnim, {
+          toValue: 1,
+          friction: 4,
+          tension: 40,
+          useNativeDriver: true,
+        })
+      ]),
+      Animated.sequence([
+        Animated.timing(flattenAnim, {
+          toValue: 0.8,
+          duration: 140,
+          useNativeDriver: true,
+        }),
+        Animated.spring(flattenAnim, {
+          toValue: 1,
+          friction: 4,
+          tension: 40,
+          useNativeDriver: true,
+        })
+      ])
+    ]).start();
+  };
+
+  useEffect(() => {
+    if (!isDragging.current) {
+      animatePill(state.index);
+    }
+  }, [state.index]);
+
   const visibleRoutes = state.routes.filter((route: any) =>
     TAB_CONFIG.some(c => c.name === route.name)
   );
+  // Keep the ref in sync on every render
+  visibleRoutesRef.current = visibleRoutes;
+
+  const lastHoveredIndex = useRef(state.index);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt, gestureState) => {
+        isDragging.current = true;
+        slideAnim.stopAnimation();
+        stretchAnim.stopAnimation();
+        flattenAnim.stopAnimation();
+        
+        const localX = gestureState.x0 - 20;
+        const targetIndex = Math.min(Math.max(Math.floor((localX - 8) / TAB_WIDTH), 0), TAB_COUNT - 1);
+        
+        lastHoveredIndex.current = targetIndex;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        
+        Animated.spring(slideAnim, {
+          toValue: targetIndex,
+          friction: 6,
+          tension: 80,
+          useNativeDriver: true,
+        }).start();
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        const localX = gestureState.moveX - 20;
+        const floatIndex = (localX - 8 - TAB_WIDTH / 2) / TAB_WIDTH;
+        const clampedIndex = Math.min(Math.max(floatIndex, 0), TAB_COUNT - 1);
+        
+        slideAnim.setValue(clampedIndex);
+        
+        const hoveredIndex = Math.min(Math.max(Math.floor((localX - 8) / TAB_WIDTH), 0), TAB_COUNT - 1);
+        if (hoveredIndex !== lastHoveredIndex.current) {
+          lastHoveredIndex.current = hoveredIndex;
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        }
+        
+        stretchAnim.setValue(1.15);
+        flattenAnim.setValue(0.9);
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        isDragging.current = false;
+
+        // ✅ Always read from refs to get FRESH state (fixes closure stale bug)
+        const currentState = stateRef.current;
+        const currentNavigation = navigationRef.current;
+        const currentRoutes = visibleRoutesRef.current;
+
+        // Calculate exact X position on release using starting coordinate and delta
+        const finalX = gestureState.x0 + gestureState.dx - 20;
+        const finalIndex = Math.min(Math.max(Math.floor((finalX - 8) / TAB_WIDTH), 0), TAB_COUNT - 1);
+
+        // Instantly snap droplet to target index to prevent getting stuck in the middle
+        animatePill(finalIndex);
+
+        const targetRoute = currentRoutes[finalIndex];
+        if (!targetRoute) return;
+
+        // Use fresh state.index to check if we're already on this tab
+        const currentRouteName = currentState.routes[currentState.index]?.name;
+        const isAlreadyFocused = currentRouteName === targetRoute.name;
+
+        const event = currentNavigation.emit({
+          type: 'tabPress',
+          target: targetRoute.key,
+          canPreventDefault: true,
+        });
+
+        if (!isAlreadyFocused && !event.defaultPrevented) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+          currentNavigation.navigate(targetRoute.name);
+        } else {
+          // Snap back if same tab or navigation prevented
+          animatePill(currentState.index);
+        }
+      },
+      onPanResponderTerminate: () => {
+        isDragging.current = false;
+        animatePill(state.index);
+      }
+    })
+  ).current;
+
+  const pillWidth = TAB_WIDTH - 8;
+  const pillLeftOffset = 12;
+
+  const translateX = slideAnim.interpolate({
+    inputRange: [0, 1, 2, 3],
+    outputRange: [
+      0 * TAB_WIDTH + pillLeftOffset,
+      1 * TAB_WIDTH + pillLeftOffset,
+      2 * TAB_WIDTH + pillLeftOffset,
+      3 * TAB_WIDTH + pillLeftOffset,
+    ]
+  });
 
   return (
     <Animated.View style={[
@@ -144,34 +302,59 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
           tint={isLight ? 'light' : 'dark'}
           style={styles.blurFill}
         >
-          {/* Inner highlight stripe — mimics Apple's Liquid Glass top glint */}
-          <View style={[
-            styles.glassHighlight,
-            { backgroundColor: isLight ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.07)' },
-          ]} />
+          {/* Shared Liquid Glass Droplet Pill with Refraction Glow */}
+          <Animated.View
+            style={[
+              styles.sharedPill,
+              {
+                left: 0,
+                transform: [
+                  { translateX },
+                  { scaleX: stretchAnim },
+                  { scaleY: flattenAnim }
+                ],
+                shadowColor: isLight ? '#007AFF' : '#5856D6',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: isLight ? 0.18 : 0.28,
+                shadowRadius: 10,
+              }
+            ]}
+          >
+            {/* Core Volumetric Glass Droplet */}
+            <GlassView
+              intensity={isLight ? 80 : 60}
+              tint={isLight ? 'light' : 'dark'}
+              style={[StyleSheet.absoluteFill, {
+                borderRadius: 30, // Stadium capsule rounded corners (half of height 60)
+                backgroundColor: isLight ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.08)',
+                overflow: 'hidden',
+                borderWidth: 1,
+                borderColor: isLight ? 'rgba(0, 122, 255, 0.15)' : 'rgba(255, 255, 255, 0.15)',
+              }]}
+            >
+              {/* Bottom shadow of droplet for 3D depth */}
+              <View style={{
+                position: 'absolute',
+                bottom: 3,
+                left: 14,
+                right: 14,
+                height: 3,
+                backgroundColor: isLight ? 'rgba(0, 0, 0, 0.04)' : 'rgba(0, 0, 0, 0.15)',
+                borderRadius: 1.5
+              }} />
+            </GlassView>
+          </Animated.View>
 
-          <View style={styles.tabRow}>
-            {visibleRoutes.map((route: any) => {
+          <View style={styles.tabRow} {...panResponder.panHandlers}>
+            {visibleRoutes.map((route: any, idx: number) => {
               const isFocused = state.routes[state.index].name === route.name;
-
-              const onPress = () => {
-                const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-                if (!isFocused && !event.defaultPrevented) {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                  navigation.navigate(route.name);
-                }
-              };
-
               return (
-                <TouchableOpacity
+                <View
                   key={route.name}
-                  accessibilityRole="button"
-                  onPress={onPress}
                   style={[styles.tabItem, { width: TAB_WIDTH }]}
-                  activeOpacity={1}
                 >
-                  <TabIcon name={route.name} isFocused={isFocused} />
-                </TouchableOpacity>
+                  <TabIcon name={route.name} isFocused={isFocused} index={idx} slideAnim={slideAnim} />
+                </View>
               );
             })}
           </View>
@@ -210,44 +393,35 @@ const styles = StyleSheet.create({
   },
   tabBarOuter: {
     width: TAB_BAR_WIDTH,
-    height: 66,
-    borderRadius: 33,
+    height: 68,
+    borderRadius: 34,
     overflow: 'hidden',
   },
   tabBarOuterDark: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.55,
-    shadowRadius: 28,
-    elevation: 24,
-    borderWidth: 0.7,
-    borderColor: 'rgba(255,255,255,0.10)',
-    backgroundColor: 'rgba(18,18,22,0.88)',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.45,
+    shadowRadius: 24,
+    elevation: 20,
+    borderWidth: 0.8,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(10,10,12,0.75)',
   },
   tabBarOuterLight: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.10,
-    shadowRadius: 20,
-    elevation: 16,
-    borderWidth: 0.7,
-    borderColor: 'rgba(0,0,0,0.06)',
-    backgroundColor: 'rgba(255,255,255,0.82)',
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 12,
+    borderWidth: 0.8,
+    borderColor: 'rgba(0,0,0,0.04)',
+    backgroundColor: 'rgba(255,255,255,0.7)',
   },
   blurFill: {
     flex: 1,
     position: 'relative',
   },
-  glassHighlight: {
-    position: 'absolute',
-    top: 0,
-    left: 16,
-    right: 16,
-    height: 1.5,
-    borderBottomLeftRadius: 2,
-    borderBottomRightRadius: 2,
-    zIndex: 2,
-  },
+
   tabRow: {
     flexDirection: 'row',
     height: '100%',
@@ -255,7 +429,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
   },
   tabItem: {
-    height: 66,
+    height: 68,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -265,11 +439,12 @@ const styles = StyleSheet.create({
     gap: 3,
     position: 'relative',
   },
-  iconPill: {
+  sharedPill: {
     position: 'absolute',
-    width: 52,
-    height: 30,
-    borderRadius: 15,
+    width: TAB_WIDTH - 8,
+    height: 60,
+    borderRadius: 30,
+    top: 4,
   },
   tabLabel: {
     fontSize: 10,
