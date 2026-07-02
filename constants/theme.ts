@@ -4,12 +4,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // HỆ THỐNG PHONG CÁCH GIAO DIỆN (THEME STYLES)
 export const THEME_STYLES = {
   obsidian: {
-    background: '#07070A', // Đen obsidian vũ trụ
-    bgGradient: ['#070708', '#111115', '#070708'] as const,
-    surface: 'rgba(28, 28, 30, 0.65)',
-    surfaceSolid: '#121215',
-    surfaceCard: 'rgba(20, 20, 24, 0.75)',
-    surfaceAccent: 'rgba(255, 255, 255, 0.04)',
+    background: '#000000', // Đen OLED tuyệt đối
+    bgGradient: ['#000000', '#000000', '#000000'] as const,
+    surface: 'rgba(15, 15, 18, 0.65)',
+    surfaceSolid: '#0B0B0D',
+    surfaceCard: 'rgba(12, 12, 14, 0.85)',
+    surfaceAccent: 'rgba(255, 255, 255, 0.03)',
     primary: '#0A84FF', // Xanh Neon Apple
     primaryLight: '#30B0FF',
     primaryNeon: '#20A0FF',

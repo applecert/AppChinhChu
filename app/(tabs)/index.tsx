@@ -408,7 +408,6 @@ export default function HomeScreen() {
         </BlurView>
       </Modal>
 
-      <TabTransition tabPath="/">
         <Animated.ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
@@ -639,7 +638,6 @@ export default function HomeScreen() {
           </>
         )}
         </Animated.ScrollView>
-      </TabTransition>
     </LinearGradient>
   );
 }

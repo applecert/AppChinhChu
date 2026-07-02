@@ -60,31 +60,16 @@ function TabIcon({ name, isFocused, index, slideAnim }: { name: string; isFocuse
   const activeColor   = isLight ? '#000000' : '#FFFFFF';
   const inactiveColor = isLight ? '#8E8E93' : 'rgba(255,255,255,0.45)';
 
-  // Interpolate scales based on distance to the sliding water droplet pill
-  // This creates a realistic "refraction zoom/bend" lens effect as the droplet moves!
-  const iconScale = slideAnim.interpolate({
-    inputRange: [index - 1, index, index + 1],
-    outputRange: [1, 1.25, 1],
-    extrapolate: 'clamp',
-  });
-
-  const labelScale = slideAnim.interpolate({
-    inputRange: [index - 1, index, index + 1],
-    outputRange: [1, 1.15, 1],
-    extrapolate: 'clamp',
-  });
-
   return (
     <View style={styles.iconWrapper}>
-      <Animated.View style={{ transform: [{ scale: iconScale }], opacity: iconOpacity }}>
+      <Animated.View style={{ opacity: iconOpacity }}>
         <IconSymbol name={symbol} size={21} color={isFocused ? activeColor : inactiveColor} />
       </Animated.View>
       <Animated.Text style={[
         styles.tabLabel,
         { color: isFocused ? activeColor : inactiveColor,
           fontWeight: isFocused ? '700' : '500',
-          opacity: labelOpacity,
-          transform: [{ scale: labelScale }] },
+          opacity: labelOpacity },
       ]}>
         {tabLabel}
       </Animated.Text>
@@ -103,6 +88,11 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
   const barScale   = useRef(new Animated.Value(1)).current;
   // Bar opacity for very smooth transitions
   const barOpacity = useRef(new Animated.Value(1)).current;
+  
+  // Stretch factor ranging from negative (left pull) to positive (right pull)
+  const barStretch = useRef(new Animated.Value(0)).current;
+  // Dedicated interaction scale value for zoom, separating it from main show/hide bounce to prevent stutter
+  const barInteractScale = useRef(new Animated.Value(1)).current;
 
   // Liquid droplet animation values
   const slideAnim = useRef(new Animated.Value(state.index)).current;
@@ -208,12 +198,21 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
         lastHoveredIndex.current = targetIndex;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         
-        Animated.spring(slideAnim, {
-          toValue: targetIndex,
-          friction: 6,
-          tension: 80,
-          useNativeDriver: true,
-        }).start();
+        Animated.parallel([
+          Animated.spring(slideAnim, {
+            toValue: targetIndex,
+            friction: 6,
+            tension: 80,
+            useNativeDriver: true,
+          }),
+          // Tactile scale-up zoom of entire container on touch (stutter-free separate value)
+          Animated.spring(barInteractScale, {
+            toValue: 1.035,
+            friction: 7,
+            tension: 80,
+            useNativeDriver: true,
+          })
+        ]).start();
       },
       onPanResponderMove: (evt, gestureState) => {
         const localX = gestureState.moveX - 20;
@@ -221,6 +220,17 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
         const clampedIndex = Math.min(Math.max(floatIndex, 0), TAB_COUNT - 1);
         
         slideAnim.setValue(clampedIndex);
+        
+        // Calculate rubber-band offset when dragging past boundaries (0 and 3)
+        let excess = 0;
+        if (floatIndex < 0) {
+          excess = floatIndex;
+        } else if (floatIndex > TAB_COUNT - 1) {
+          excess = floatIndex - (TAB_COUNT - 1);
+        }
+        // Clamp excess to [-0.8, 0.8] for safe maximum stretch bounds
+        const clampedExcess = Math.min(Math.max(excess, -0.8), 0.8);
+        barStretch.setValue(clampedExcess * 0.15); // Multiply by 0.15 for rubber-band resistance
         
         const hoveredIndex = Math.min(Math.max(Math.floor((localX - 8) / TAB_WIDTH), 0), TAB_COUNT - 1);
         if (hoveredIndex !== lastHoveredIndex.current) {
@@ -246,6 +256,22 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
         // Instantly snap droplet to target index to prevent getting stuck in the middle
         animatePill(finalIndex);
 
+        // Spring reset container zoom and stretch factors back to resting defaults
+        Animated.parallel([
+          Animated.spring(barInteractScale, {
+            toValue: 1.0,
+            friction: 5,
+            tension: 50,
+            useNativeDriver: true,
+          }),
+          Animated.spring(barStretch, {
+            toValue: 0,
+            friction: 5,
+            tension: 40,
+            useNativeDriver: true,
+          })
+        ]).start();
+
         const targetRoute = currentRoutes[finalIndex];
         if (!targetRoute) return;
 
@@ -270,12 +296,45 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
       onPanResponderTerminate: () => {
         isDragging.current = false;
         animatePill(state.index);
+        
+        // Reset scale and stretch factors on termination
+        Animated.parallel([
+          Animated.spring(barInteractScale, {
+            toValue: 1.0,
+            friction: 5,
+            tension: 50,
+            useNativeDriver: true,
+          }),
+          Animated.spring(barStretch, {
+            toValue: 0,
+            friction: 5,
+            tension: 40,
+            useNativeDriver: true,
+          })
+        ]).start();
       }
     })
   ).current;
 
   const pillWidth = TAB_WIDTH - 8;
   const pillLeftOffset = 12;
+
+  // Deriving off-center elastic stretching using scaleX and translateX combinations
+  const barScaleX = barStretch.interpolate({
+    inputRange: [-0.15, 0, 0.15],
+    outputRange: [1.15, 1, 1.15],
+    extrapolate: 'clamp',
+  });
+
+  const barTranslateX = barStretch.interpolate({
+    inputRange: [-0.15, 0, 0.15],
+    outputRange: [
+      -0.15 * (TAB_BAR_WIDTH / 2),
+      0,
+      0.15 * (TAB_BAR_WIDTH / 2)
+    ],
+    extrapolate: 'clamp',
+  });
 
   const translateX = slideAnim.interpolate({
     inputRange: [0, 1, 2, 3],
@@ -290,7 +349,7 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
   return (
     <Animated.View style={[
       styles.tabBarContainer,
-      { transform: [{ translateY }, { scale: barScale }], opacity: barOpacity },
+      { transform: [{ translateY }, { translateX: barTranslateX }, { scale: barScale }, { scale: barInteractScale }, { scaleX: barScaleX }], opacity: barOpacity },
     ]}>
       {/* Liquid Glass pill */}
       <View style={[
@@ -314,22 +373,22 @@ function FloatingTabBar({ state, descriptors, navigation }: any) {
                   { scaleY: flattenAnim }
                 ],
                 shadowColor: isLight ? '#007AFF' : '#5856D6',
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: isLight ? 0.18 : 0.28,
-                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 5 },
+                shadowOpacity: isLight ? 0.35 : 0.5,
+                shadowRadius: 12,
               }
             ]}
           >
             {/* Core Volumetric Glass Droplet */}
             <GlassView
-              intensity={isLight ? 80 : 60}
+              intensity={isLight ? 95 : 80}
               tint={isLight ? 'light' : 'dark'}
               style={[StyleSheet.absoluteFill, {
                 borderRadius: 30, // Stadium capsule rounded corners (half of height 60)
-                backgroundColor: isLight ? 'rgba(255, 255, 255, 0.22)' : 'rgba(255, 255, 255, 0.08)',
+                backgroundColor: isLight ? 'rgba(255, 255, 255, 0.95)' : 'rgba(30, 30, 30, 0.85)',
                 overflow: 'hidden',
                 borderWidth: 1,
-                borderColor: isLight ? 'rgba(0, 122, 255, 0.15)' : 'rgba(255, 255, 255, 0.15)',
+                borderColor: isLight ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.15)',
               }]}
             >
               {/* Bottom shadow of droplet for 3D depth */}
@@ -372,7 +431,11 @@ export default function TabLayout() {
   return (
     <>
       <StatusBar style={isLight ? 'dark' : 'light'} />
-      <Tabs tabBar={(props) => <FloatingTabBar {...props} />} screenOptions={{ headerShown: false }}>
+      <Tabs 
+        tabBar={(props) => <FloatingTabBar {...props} />} 
+        screenOptions={{ headerShown: false }}
+        {...({ sceneContainerStyle: { backgroundColor: COLORS.background } } as any)}
+      >
         <Tabs.Screen name="index"   options={{ title: 'Trang chủ' }} />
         <Tabs.Screen name="sign"    options={{ title: 'Ký App' }} />
         <Tabs.Screen name="apps"    options={{ title: 'Kho App' }} />

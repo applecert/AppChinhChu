@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet } from 'react-native';
 import { usePathname } from 'expo-router';
+import { COLORS, useThemeUpdate } from '../../constants/theme';
 
 interface TabTransitionProps {
   children: React.ReactNode;
@@ -13,14 +14,13 @@ let lastActiveTabPath = '/';
 const TAB_PATHS = ['/', '/sign', '/apps', '/mmo'];
 
 export function TabTransition({ children, tabPath }: TabTransitionProps) {
+  useThemeUpdate(); // Sync background color with dynamic theme updates
   const pathname = usePathname();
   // Normalize pathname (strip trailing slashes if any)
   const normalizedPathname = pathname === '/index' ? '/' : pathname;
   const isTabActive = normalizedPathname === tabPath;
 
-  const opacity = useRef(new Animated.Value(isTabActive ? 1 : 0.95)).current;
-  const translateY = useRef(new Animated.Value(isTabActive ? 0 : 12)).current;
-  const scale = useRef(new Animated.Value(isTabActive ? 1 : 0.985)).current;
+  const opacity = useRef(new Animated.Value(isTabActive ? 1 : 0)).current;
 
   useEffect(() => {
     if (isTabActive) {
@@ -28,52 +28,35 @@ export function TabTransition({ children, tabPath }: TabTransitionProps) {
       lastActiveTabPath = tabPath;
 
       if (isTabSwitch) {
-        // Reset animations to starting values and slide/fade in
-        opacity.setValue(0.95);
-        translateY.setValue(12);
-        scale.setValue(0.985);
+        // Smooth fade-in transition starting from 0 to avoid brightness flash
+        opacity.setValue(0);
 
-        Animated.parallel([
-          Animated.timing(opacity, {
-            toValue: 1,
-            duration: 350,
-            useNativeDriver: true,
-          }),
-          Animated.spring(translateY, {
-            toValue: 0,
-            stiffness: 160,
-            damping: 20,
-            mass: 0.9,
-            useNativeDriver: true,
-          }),
-          Animated.spring(scale, {
-            toValue: 1,
-            stiffness: 160,
-            damping: 20,
-            mass: 0.9,
-            useNativeDriver: true,
-          }),
-        ]).start();
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 200, // Balanced, fast and smooth fade-in
+          useNativeDriver: true,
+        }).start();
       } else {
-        // If returning from a modal, ensure values stay at active state with no flashing
+        // If returning from a modal, ensure values stay at active state
         opacity.setValue(1);
-        translateY.setValue(0);
-        scale.setValue(1);
       }
     } else {
       // If another tab was activated, hide this tab immediately
       const isOtherTabActive = TAB_PATHS.includes(normalizedPathname);
       if (isOtherTabActive) {
         opacity.setValue(0);
-        translateY.setValue(10);
-        scale.setValue(0.98);
       }
-      // If a modal or stack page is active on top of tabs, do nothing (keep tab fully visible underneath)
     }
   }, [normalizedPathname, isTabActive, tabPath]);
 
   return (
-    <Animated.View style={[styles.container, { opacity, transform: [{ translateY }, { scale }] }]}>
+    <Animated.View style={[
+      styles.container, 
+      { 
+        opacity,
+        backgroundColor: COLORS.background 
+      }
+    ]}>
       {children}
     </Animated.View>
   );

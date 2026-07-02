@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { StyleSheet, View, Text, Dimensions, Animated, Image, Easing, Platform, AppState, AppStateStatus, TouchableOpacity, ActivityIndicator, ScrollView } from 'react-native';
 import { Stack, usePathname } from 'expo-router';
+import { ThemeProvider, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ShieldCheck, Sparkles, BellRing, Wrench } from 'lucide-react-native';
@@ -290,6 +291,15 @@ export default function RootLayout() {
   const showForceUpdate = forceUpdateConfig && forceUpdateConfig.show && !userSkippedUpdate && pathname !== '/admin' && !isAdmin;
   const showMaintenance = maintenanceConfig && maintenanceConfig.show && pathname !== '/admin' && !isAdmin;
 
+  const isLight = COLORS.background === '#F4F4F6';
+  const navigationTheme = {
+    ...(isLight ? DefaultTheme : DarkTheme),
+    colors: {
+      ...(isLight ? DefaultTheme.colors : DarkTheme.colors),
+      background: COLORS.background,
+    }
+  };
+
   return (
     <>
       <StatusBar style="light" />
@@ -329,7 +339,7 @@ export default function RootLayout() {
                 <Text style={styles.blockBtnText}>CẬP NHẬT NGAY</Text>
               </LinearGradient>
             </TouchableOpacity>
-
+ 
             {forceUpdateConfig.allowSkip ? (
               <TouchableOpacity 
                 style={styles.blockRetryBtn} 
@@ -357,72 +367,74 @@ export default function RootLayout() {
                 <Text style={styles.blockBtnText}>MỞ CÀI ĐẶT THIẾT BỊ</Text>
               </LinearGradient>
             </TouchableOpacity>
-
+ 
             <TouchableOpacity style={styles.blockRetryBtn} activeOpacity={0.7} onPress={checkNotificationPermission}>
               <Text style={styles.blockRetryText}>THỬ LẠI</Text>
             </TouchableOpacity>
           </View>
         </LinearGradient>
       ) : (
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLORS.background } }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen 
-            name="movie" 
-            options={{ 
-              presentation: 'card', 
-              animation: 'slide_from_right' 
-            }} 
-          />
-          <Stack.Screen 
-            name="details/[id]" 
-            options={{ 
-              presentation: 'card', 
-              animation: 'slide_from_right' 
-            }} 
-          />
-          <Stack.Screen 
-            name="search" 
-            options={{ 
-              presentation: 'modal', 
-              animation: 'slide_from_bottom' 
-            }} 
-          />
-          <Stack.Screen 
-            name="account" 
-            options={{ 
-              presentation: 'modal', 
-              animation: 'slide_from_bottom' 
-            }} 
-          />
-          <Stack.Screen 
-            name="vip" 
-            options={{ 
-              presentation: 'card', 
-              animation: 'slide_from_right' 
-            }} 
-          />
-          <Stack.Screen 
-            name="buy-vip" 
-            options={{ 
-              presentation: 'card', 
-              animation: 'slide_from_right' 
-            }} 
-          />
-          <Stack.Screen 
-            name="settings" 
-            options={{ 
-              presentation: 'card', 
-              animation: 'slide_from_right' 
-            }} 
-          />
-          <Stack.Screen 
-            name="admin" 
-            options={{ 
-              presentation: 'card', 
-              animation: 'slide_from_right' 
-            }} 
-          />
-        </Stack>
+        <ThemeProvider value={navigationTheme}>
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: COLORS.background } }}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen 
+              name="movie" 
+              options={{ 
+                presentation: 'card', 
+                animation: 'slide_from_right' 
+              }} 
+            />
+            <Stack.Screen 
+              name="details/[id]" 
+              options={{ 
+                presentation: 'card', 
+                animation: 'slide_from_right' 
+              }} 
+            />
+            <Stack.Screen 
+              name="search" 
+              options={{ 
+                presentation: 'modal', 
+                animation: 'slide_from_bottom' 
+              }} 
+            />
+            <Stack.Screen 
+              name="account" 
+              options={{ 
+                presentation: 'modal', 
+                animation: 'slide_from_bottom' 
+              }} 
+            />
+            <Stack.Screen 
+              name="vip" 
+              options={{ 
+                presentation: 'card', 
+                animation: 'slide_from_right' 
+              }} 
+            />
+            <Stack.Screen 
+              name="buy-vip" 
+              options={{ 
+                presentation: 'card', 
+                animation: 'slide_from_right' 
+              }} 
+            />
+            <Stack.Screen 
+              name="settings" 
+              options={{ 
+                presentation: 'card', 
+                animation: 'slide_from_right' 
+              }} 
+            />
+            <Stack.Screen 
+              name="admin" 
+              options={{ 
+                presentation: 'card', 
+                animation: 'slide_from_right' 
+              }} 
+            />
+          </Stack>
+        </ThemeProvider>
       )}
 
       {showIntro && (

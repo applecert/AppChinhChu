@@ -172,7 +172,6 @@ export default function AppsScreen() {
   const isLightMode = COLORS.background === '#F4F4F6';
 
   return (
-    <TabTransition tabPath="/apps">
       <LinearGradient colors={COLORS.bgGradient} style={styles.container}>
         <StatusBar style={isLightMode ? 'dark' : 'light'} />
       <View style={styles.header}>
@@ -253,7 +252,6 @@ export default function AppsScreen() {
         </>
       )}
       </LinearGradient>
-    </TabTransition>
   );
 }
 

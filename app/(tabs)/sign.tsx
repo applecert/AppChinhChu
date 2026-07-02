@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, FlatList, TouchableOpacity, Alert, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView, Image, DeviceEventEmitter } from 'react-native';
+import { StyleSheet, Text, View, FlatList, TouchableOpacity, Alert, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView, Image, DeviceEventEmitter, InteractionManager } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -285,8 +285,13 @@ export default function SignScreen() {
     isTabBarHidden.current = false;
     DeviceEventEmitter.emit('showTabBar');
     forceIOSFolderCreation();
-    loadDownloadedFiles(); 
-    loadSavedCerts(); 
+    
+    // Defer heavy file system reading until after the tab transition animation completes
+    const task = InteractionManager.runAfterInteractions(() => {
+      loadDownloadedFiles(); 
+      loadSavedCerts();
+    });
+
     if (IpaSigner) {
       IpaSigner.endBackgroundTask().catch(() => {});
     }
@@ -296,6 +301,7 @@ export default function SignScreen() {
         importCertFromZip();
       }, 300);
     }
+    return () => task.cancel();
   }, [activeTab, params?.importCert]));
 
   const loadDownloadedFiles = async () => {
@@ -791,7 +797,6 @@ export default function SignScreen() {
   return (
     <View style={[styles.container, { backgroundColor: COLORS.background }]}>
       <StatusBar style={COLORS.background === '#F4F4F6' ? 'dark' : 'light'} />
-      <TabTransition tabPath="/sign">
       <View style={[styles.header, { borderColor: COLORS.border }]}>
         <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20}}>
           <View style={{flexDirection: 'row', alignItems: 'center', gap: 10}}>
@@ -872,7 +877,7 @@ export default function SignScreen() {
             scrollEventThrottle={16}
           /> 
       )}
-      </TabTransition>
+
 
       {/* MODAL MENU 3 CHẤM */}
       <Modal visible={menuVisible} transparent animationType="fade">
